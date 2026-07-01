@@ -697,7 +697,7 @@ export default function App() {
                 <div><label style={lbl}>Prénom</label><input value={form.prenom} onChange={e => setForm(f => ({ ...f, prenom: e.target.value }))} style={inp} placeholder="Ex: Marie"/></div>
                 <div><label style={lbl}>Nom</label><input value={form.nom} onChange={e => setForm(f => ({ ...f, nom: e.target.value }))} style={inp} placeholder="Ex: Curie"/></div>
               </div>
-              <div><label style={lbl}>Formation / Rythme</label><input value={form.poste} onChange={e => setForm(f => ({ ...f, poste: e.target.value }))} style={inp} placeholder="Ex: BTS SIO - 2 jours / 3 jours"/></div>
+              <div><label style={lbl}>Formation / Rythme</label><input value={form.poste} onChange={e => setForm(f => ({ ...f, poste: e.target.value }))} style={inp} placeholder="Ex: EFB -14h/18h"/></div>
               <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
                 <div><label style={lbl}>Date de début</label><input type="date" value={form.debut} onChange={e => setForm(f => ({ ...f, debut: e.target.value }))} style={inp}/></div>
                 <div><label style={lbl}>Date de fin</label><input type="date" value={form.fin} onChange={e => setForm(f => ({ ...f, fin: e.target.value }))} style={inp}/></div>

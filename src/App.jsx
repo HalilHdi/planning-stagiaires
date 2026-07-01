@@ -140,6 +140,7 @@ export default function App() {
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState(null);
   const [form, setForm] = useState({ nom:"", prenom:"", debut:"", fin:"", poste:"" });
+  const [formError, setFormError] = useState("");
   const [filter, setFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [calMonth, setCalMonth] = useState(() => ({ y: new Date().getFullYear(), m: new Date().getMonth() }));
@@ -167,14 +168,21 @@ export default function App() {
 
   useEffect(() => { fetchStagiaires(); fetchAssignments(); }, [fetchStagiaires, fetchAssignments]);
 
-  const resetForm = () => { setForm({ nom:"", prenom:"", debut:"", fin:"", poste:"" }); setEditId(null); };
+  const resetForm = () => { setForm({ nom:"", prenom:"", debut:"", fin:"", poste:"" }); setEditId(null); setFormError(""); };
   const openAdd = () => { resetForm(); setShowForm(true); };
-  const openEdit = s => { setForm({ nom:s.nom, prenom:s.prenom, debut:s.debut, fin:s.fin, poste:s.poste }); setEditId(s.id); setShowForm(true); };
+  const openEdit = s => { setForm({ nom:s.nom, prenom:s.prenom, debut:s.debut, fin:s.fin, poste:s.poste }); setEditId(s.id); setFormError(""); setShowForm(true); };
 
   const save = async () => {
     if (!form.nom || !form.prenom || !form.debut || !form.fin) return;
-    if (editId) await fetch(`${API_BASE}/stagiaires/${editId}`, { method:"PUT", headers:{ "Content-Type":"application/json" }, body: JSON.stringify(form) });
-    else await fetch(`${API_BASE}/stagiaires`, { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify(form) });
+    setFormError("");
+    const res = editId
+      ? await fetch(`${API_BASE}/stagiaires/${editId}`, { method:"PUT", headers:{ "Content-Type":"application/json" }, body: JSON.stringify(form) })
+      : await fetch(`${API_BASE}/stagiaires`, { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify(form) });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      setFormError(data.error || "Une erreur est survenue, le stagiaire n'a pas été enregistré.");
+      return;
+    }
     setShowForm(false); resetForm();
     await fetchStagiaires();
     await fetchAssignments();
@@ -689,6 +697,9 @@ export default function App() {
               </div>
               {form.debut && form.fin && new Date(form.fin) < new Date(form.debut) && (
                 <div style={{ fontSize:12, color:"#dc2626", background:"#fef2f2", padding:"6px 10px", borderRadius:6 }}>La date de fin doit être postérieure à la date de début.</div>
+              )}
+              {formError && (
+                <div style={{ fontSize:12, color:"#dc2626", background:"#fef2f2", padding:"6px 10px", borderRadius:6 }}>{formError}</div>
               )}
             </div>
             <div style={{ display:"flex", gap:10, marginTop:20, justifyContent:"flex-end" }}>

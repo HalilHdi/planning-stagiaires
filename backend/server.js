@@ -106,8 +106,8 @@ app.post("/api/stagiaires", (req, res) => {
   try {
     const { nom, prenom, debut, fin, poste } = req.body;
 
-    if (!nom || !prenom || !debut || !fin || !poste) {
-      return res.status(400).json({ error: "Tous les champs sont requis : nom, prenom, debut, fin, poste" });
+    if (!nom || !prenom || !debut || !fin) {
+      return res.status(400).json({ error: "Tous les champs sont requis : nom, prenom, debut, fin" });
     }
 
     if (new Date(fin) < new Date(debut)) {
@@ -116,7 +116,7 @@ app.post("/api/stagiaires", (req, res) => {
 
     runQuery(
       "INSERT INTO stagiaires (nom, prenom, debut, fin, poste) VALUES (?, ?, ?, ?, ?)",
-      [nom, prenom, debut, fin, poste]
+      [nom, prenom, debut, fin, poste || ""]
     );
 
     const id = db.exec("SELECT last_insert_rowid() as id")[0].values[0][0];

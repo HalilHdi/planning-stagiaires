@@ -5,10 +5,17 @@ const API_BASE = "/api";
 
 const ACCENT = ["#3b82f6","#8b5cf6","#ec4899","#f59e0b","#10b981","#06b6d4","#f97316","#6366f1","#14b8a6","#e11d48"];
 
+// Parse une chaîne "YYYY-MM-DD" en date locale (minuit local), pour éviter
+// le décalage introduit par new Date("YYYY-MM-DD") qui parse en UTC.
+function parseLocal(d) {
+  if (!d) return null;
+  const [y, m, day] = d.split("-").map(Number);
+  return new Date(y, m - 1, day);
+}
 function getStatus(s, e) {
   const now = new Date(); now.setHours(0,0,0,0);
-  const sd = new Date(s); sd.setHours(0,0,0,0);
-  const ed = new Date(e); ed.setHours(0,0,0,0);
+  const sd = parseLocal(s);
+  const ed = parseLocal(e);
   if (now < sd) return "upcoming";
   if (now > ed) return "completed";
   return "active";
@@ -18,9 +25,9 @@ const SMETA = {
   upcoming: { label:"À venir", bg:"#dbeafe", fg:"#1e40af", dot:"#3b82f6" },
   completed: { label:"Terminé", bg:"#f3f4f6", fg:"#4b5563", dot:"#9ca3af" },
 };
-function fmtDate(d) { return d ? new Date(d).toLocaleDateString("fr-FR",{day:"2-digit",month:"short",year:"numeric"}) : ""; }
-function daysLeft(e) { const n=new Date();n.setHours(0,0,0,0);return Math.ceil((new Date(e).setHours(0,0,0,0)-n)/864e5); }
-function dur(s,e) { const d=Math.ceil((new Date(e)-new Date(s))/864e5); return d<7?`${d}j`:d<30?`${Math.round(d/7)} sem.`:`${Math.round(d/30)} mois`; }
+function fmtDate(d) { return d ? parseLocal(d).toLocaleDateString("fr-FR",{day:"2-digit",month:"short",year:"numeric"}) : ""; }
+function daysLeft(e) { const n=new Date();n.setHours(0,0,0,0);return Math.ceil((parseLocal(e)-n)/864e5); }
+function dur(s,e) { const d=Math.ceil((parseLocal(e)-parseLocal(s))/864e5); return d<7?`${d}j`:d<30?`${Math.round(d/7)} sem.`:`${Math.round(d/30)} mois`; }
 
 const GRANDE = [
   { id:"g5", x:162, y:60,  o:"h", cp:"top",    label:"G5" },
@@ -136,7 +143,7 @@ const IC = {
 
 export default function App() {
   const [stags, setStags] = useState([]);
-  const [view, setView] = useState("plan");
+  const [view, setView] = useState(() => sessionStorage.getItem("view") || "dashboard");
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState(null);
   const [form, setForm] = useState({ nom:"", prenom:"", debut:"", fin:"", poste:"" });
@@ -167,6 +174,7 @@ export default function App() {
   }, []);
 
   useEffect(() => { fetchStagiaires(); fetchAssignments(); }, [fetchStagiaires, fetchAssignments]);
+  useEffect(() => { sessionStorage.setItem("view", view); }, [view]);
 
   const resetForm = () => { setForm({ nom:"", prenom:"", debut:"", fin:"", poste:"" }); setEditId(null); setFormError(""); };
   const openAdd = () => { resetForm(); setShowForm(true); };
@@ -204,7 +212,7 @@ export default function App() {
     let l = stags;
     if (filter !== "all") l = l.filter(s => getStatus(s.debut, s.fin) === filter);
     if (search) { const q = search.toLowerCase(); l = l.filter(s => `${s.nom} ${s.prenom} ${s.poste}`.toLowerCase().includes(q)); }
-    return l.sort((a, b) => new Date(a.debut) - new Date(b.debut));
+    return l.sort((a, b) => parseLocal(a.debut) - parseLocal(b.debut));
   }, [stags, filter, search]);
 
   const exportXL = () => {
@@ -224,14 +232,14 @@ export default function App() {
   const navY = dir => setCalMonth(p => ({ ...p, y: p.y + dir }));
 
   const yearStags = useMemo(() => stags.filter(s => {
-    const sd = new Date(s.debut), ed = new Date(s.fin);
+    const sd = parseLocal(s.debut), ed = parseLocal(s.fin);
     const ys = new Date(calMonth.y, 0, 1), ye = new Date(calMonth.y, 11, 31);
     return sd <= ye && ed >= ys;
-  }).sort((a, b) => new Date(a.debut) - new Date(b.debut)), [stags, calMonth.y]);
+  }).sort((a, b) => parseLocal(a.debut) - parseLocal(b.debut)), [stags, calMonth.y]);
 
   const monthOverlap = useCallback((s, m) => {
     const ms = new Date(calMonth.y, m, 1), me = new Date(calMonth.y, m + 1, 0);
-    const sd = new Date(s.debut), ed = new Date(s.fin);
+    const sd = parseLocal(s.debut), ed = parseLocal(s.fin);
     if (sd > me || ed < ms) return null;
     const startsHere = sd >= ms && sd <= me;
     const endsHere = ed >= ms && ed <= me;
@@ -510,7 +518,7 @@ export default function App() {
                           <div style={{ padding:"0 10px", fontSize:12, color:"#6b7280", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{s.poste}</div>
                           {MONTHS_SHORT.map((_, mi) => {
                             const o = monthOverlap(s, mi);
-                            const sd = new Date(s.debut), ed = new Date(s.fin);
+                            const sd = parseLocal(s.debut), ed = parseLocal(s.fin);
                             return (
                               <div key={mi} style={{ position:"relative", height:22, borderLeft:"1px solid #f9fafb" }}>
                                 {o && (
@@ -681,9 +689,8 @@ export default function App() {
 
       {/* ── STAGIAIRE FORM MODAL ── */}
       {showForm && (
-        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.4)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:50, padding:16 }}
-          onClick={() => { setShowForm(false); resetForm(); }}>
-          <div onClick={e => e.stopPropagation()} style={{ background:"#fff", borderRadius:16, padding:24, width:"100%", maxWidth:420, boxShadow:"0 24px 48px rgba(0,0,0,0.18)" }}>
+        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.4)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:50, padding:16 }}>
+          <div style={{ background:"#fff", borderRadius:16, padding:24, width:"100%", maxWidth:420, boxShadow:"0 24px 48px rgba(0,0,0,0.18)" }}>
             <div style={{ fontSize:17, fontWeight:700, marginBottom:20 }}>{editId ? "Modifier le stagiaire" : "Nouveau stagiaire"}</div>
             <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
               <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>

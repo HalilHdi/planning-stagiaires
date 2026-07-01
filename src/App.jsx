@@ -1,7 +1,7 @@
 import { useState, useMemo, useCallback, useEffect } from "react";
 import * as XLSX from "xlsx";
 
-const API_BASE = "http://localhost:3001/api";
+const API_BASE = "/api";
 
 const ACCENT = ["#3b82f6","#8b5cf6","#ec4899","#f59e0b","#10b981","#06b6d4","#f97316","#6366f1","#14b8a6","#e11d48"];
 

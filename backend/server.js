@@ -48,6 +48,17 @@ async function initDB() {
     )
   `);
 
+  db.run(`
+    CREATE TABLE IF NOT EXISTS desk_layout (
+      desk_id TEXT PRIMARY KEY,
+      x INTEGER NOT NULL,
+      y INTEGER NOT NULL,
+      o TEXT NOT NULL,
+      cp TEXT NOT NULL,
+      updated_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
   saveDB();
   console.log("✓ Tables initialisées");
 }
@@ -268,6 +279,52 @@ app.delete("/api/assignments/:deskId", (req, res) => {
   }
 });
 
+// ─── ROUTES : DISPOSITION DES BUREAUX ───────────────────────────
+
+// GET toutes les positions personnalisées
+app.get("/api/desk-layout", (req, res) => {
+  try {
+    res.json(getAll("SELECT * FROM desk_layout"));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT positionner/pivoter un bureau
+app.put("/api/desk-layout/:deskId", (req, res) => {
+  try {
+    const { deskId } = req.params;
+    const { x, y, o, cp } = req.body;
+
+    if (typeof x !== "number" || typeof y !== "number" || !o || !cp) {
+      return res.status(400).json({ error: "x, y, o et cp sont requis" });
+    }
+    if (!["h", "v"].includes(o) || !["top", "bottom", "left", "right"].includes(cp)) {
+      return res.status(400).json({ error: "Orientation ou position de chaise invalide" });
+    }
+
+    runQuery(
+      `INSERT OR REPLACE INTO desk_layout (desk_id, x, y, o, cp, updated_at)
+       VALUES (?, ?, ?, ?, ?, datetime('now'))`,
+      [deskId, x, y, o, cp]
+    );
+
+    res.json({ desk_id: deskId, x, y, o, cp });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE réinitialiser la disposition (tous les bureaux)
+app.delete("/api/desk-layout", (req, res) => {
+  try {
+    runQuery("DELETE FROM desk_layout");
+    res.json({ message: "Disposition réinitialisée" });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── ROUTES : STATISTIQUES ──────────────────────────────────────
 
 app.get("/api/stats", (req, res) => {
@@ -324,6 +381,9 @@ initDB().then(() => {
     console.log("║  POST   /api/assignments                 ║");
     console.log("║  PUT    /api/assignments/:id/unavailable  ║");
     console.log("║  DELETE /api/assignments/:id              ║");
+    console.log("║  GET    /api/desk-layout                 ║");
+    console.log("║  PUT    /api/desk-layout/:id              ║");
+    console.log("║  DELETE /api/desk-layout                 ║");
     console.log("║  GET    /api/stats                       ║");
     console.log("║  GET    /api/health                      ║");
     console.log("╚══════════════════════════════════════════╝");

@@ -76,7 +76,13 @@ const THEMES = {
 };
 function tint(color, dark, lightBg) { return dark ? `${color}22` : lightBg; }
 
-function DeskUnit({ desk, status, name, onClick, isSelected, dark }) {
+const ROTATE_ORDER = ["top", "right", "bottom", "left"];
+function nextRotation(cp) {
+  const next = ROTATE_ORDER[(ROTATE_ORDER.indexOf(cp) + 1) % 4];
+  return { cp: next, o: (next === "top" || next === "bottom") ? "h" : "v" };
+}
+
+function DeskUnit({ desk, status, name, onClick, isSelected, dark, editable, roomW, roomH, onMove, onRotate }) {
   const isH = desk.o === "h";
   const dW = isH ? 116 : 46;
   const dH = isH ? 46 : 116;
@@ -91,22 +97,48 @@ function DeskUnit({ desk, status, name, onClick, isSelected, dark }) {
   const co = offsets[desk.cp];
   const c = deskColor(status, dark);
   const [hov, setHov] = useState(false);
+  const [dragPos, setDragPos] = useState(null);
+  const pos = dragPos ?? { x: desk.x, y: desk.y };
+
+  const handlePointerDown = e => {
+    if (!editable) return;
+    e.stopPropagation();
+    const startX = e.clientX, startY = e.clientY;
+    const originX = desk.x, originY = desk.y;
+    const clamp = (nx, ny) => ({
+      x: Math.max(0, Math.min(roomW - dW, nx)),
+      y: Math.max(0, Math.min(roomH - dH, ny)),
+    });
+    setDragPos(clamp(originX, originY));
+    const onPointerMove = ev => setDragPos(clamp(originX + (ev.clientX - startX), originY + (ev.clientY - startY)));
+    const onPointerUp = ev => {
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+      const final = clamp(originX + (ev.clientX - startX), originY + (ev.clientY - startY));
+      setDragPos(null);
+      onMove(desk.id, Math.round(final.x), Math.round(final.y));
+    };
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+  };
+
   return (
     <div
-      style={{ position:"absolute", left:desk.x, top:desk.y, cursor:"pointer", zIndex: isSelected ? 10 : 2 }}
-      onClick={e => { e.stopPropagation(); onClick(desk); }}
+      style={{ position:"absolute", left:pos.x, top:pos.y, cursor: editable ? "grab" : "pointer", zIndex: isSelected ? 10 : 2, touchAction: editable ? "none" : "auto" }}
+      onPointerDown={handlePointerDown}
+      onClick={e => { if (editable) return; e.stopPropagation(); onClick(desk); }}
       onMouseEnter={() => setHov(true)}
       onMouseLeave={() => setHov(false)}
     >
       <div style={{
         width:dW, height:dH, borderRadius:7,
         background: hov ? `${c.border}18` : c.bg,
-        border:`2.5px solid ${c.border}`,
+        border: editable ? `2.5px dashed ${c.border}` : `2.5px solid ${c.border}`,
         boxShadow: isSelected
           ? `0 0 0 3px ${c.border}40, 0 4px 14px ${c.border}30`
           : hov ? `0 2px 10px ${c.border}20` : `0 1px 4px rgba(0,0,0,0.05)`,
         display:"flex", alignItems:"center", justifyContent:"center", flexDirection:"column",
-        transition:"all 0.2s", position:"relative",
+        transition: dragPos ? "none" : "all 0.2s", position:"relative",
       }}>
         <div style={{ fontSize:8, color:c.text, fontWeight:700, opacity:0.45, letterSpacing:"0.05em" }}>{desk.label}</div>
         {name && (
@@ -122,7 +154,7 @@ function DeskUnit({ desk, status, name, onClick, isSelected, dark }) {
         position:"absolute", left:co.x, top:co.y,
         width:cr*2, height:cr*2, borderRadius:"50%",
         background:c.chair, border:`2px solid ${c.border}`,
-        transition:"all 0.2s",
+        transition: dragPos ? "none" : "all 0.2s",
         boxShadow: isSelected ? `0 0 0 2px ${c.border}30` : "none",
       }}>
         {/* Backrest indicator */}
@@ -135,6 +167,16 @@ function DeskUnit({ desk, status, name, onClick, isSelected, dark }) {
           borderRadius:2, background:c.border, opacity:0.3,
         }}/>
       </div>
+      {editable && (
+        <button
+          onPointerDown={e => e.stopPropagation()}
+          onClick={e => { e.stopPropagation(); onRotate(desk.id); }}
+          title="Pivoter"
+          style={{ position:"absolute", left:dW - 10, top:-10, width:20, height:20, borderRadius:"50%", border:`1.5px solid ${c.border}`, background:"#fff", color:c.border, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", zIndex:6, boxShadow:"0 1px 4px rgba(0,0,0,0.2)" }}
+        >
+          <SvgIcon d={IC.rotate} size={11}/>
+        </button>
+      )}
     </div>
   );
 }
@@ -166,6 +208,8 @@ const IC = {
   expand:   "M13 5l7 7-7 7 M6 5l7 7-7 7",
   sun:      "M12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10z M12 1v2 M12 21v2 M4.22 4.22l1.42 1.42 M18.36 18.36l1.42 1.42 M1 12h2 M21 12h2 M4.22 19.78l1.42-1.42 M18.36 5.64l1.42-1.42",
   moon:     "M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z",
+  rotate:   "M23 4v6h-6 M1 20v-6h6 M3.51 9a9 9 0 0 1 14.85-3.36L23 10 M1 14l4.64 4.36A9 9 0 0 0 20.49 15",
+  move:     "M5 9l-3 3 3 3 M9 5l3-3 3 3 M15 19l-3 3-3-3 M19 9l3 3-3 3 M2 12h20 M12 2v20",
 };
 
 function useViewportWidth() {
@@ -193,6 +237,8 @@ export default function App() {
   const [deskModal, setDeskModal] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const [layoutOverrides, setLayoutOverrides] = useState({});
+  const [editLayout, setEditLayout] = useState(false);
   const [dark, setDark] = useState(() => {
     const saved = localStorage.getItem("theme");
     if (saved) return saved === "dark";
@@ -222,7 +268,15 @@ export default function App() {
     setAssignments(map);
   }, []);
 
-  useEffect(() => { fetchStagiaires(); fetchAssignments(); }, [fetchStagiaires, fetchAssignments]);
+  const fetchDeskLayout = useCallback(async () => {
+    const res = await fetch(`${API_BASE}/desk-layout`);
+    const data = await res.json();
+    const map = {};
+    data.forEach(r => { map[r.desk_id] = { x:r.x, y:r.y, o:r.o, cp:r.cp }; });
+    setLayoutOverrides(map);
+  }, []);
+
+  useEffect(() => { fetchStagiaires(); fetchAssignments(); fetchDeskLayout(); }, [fetchStagiaires, fetchAssignments, fetchDeskLayout]);
   useEffect(() => { sessionStorage.setItem("view", view); }, [view]);
 
   const resetForm = () => { setForm({ nom:"", prenom:"", debut:"", fin:"", poste:"" }); setEditId(null); setFormError(""); };
@@ -318,7 +372,33 @@ export default function App() {
   const assignedIds = useMemo(() => new Set(Object.values(assignments).filter(a => a?.stagiaireId).map(a => a.stagiaireId)), [assignments]);
   const availStags = useMemo(() => stags.filter(s => !assignedIds.has(s.id) && getStatus(s.debut, s.fin) === "active"), [stags, assignedIds]);
 
-  const allDesks = [...GRANDE.map(d => ({ ...d, room:"Grande Salle" })), ...PETITE.map(d => ({ ...d, room:"Petite Salle" }))];
+  const applyOverride = useCallback(d => {
+    const o = layoutOverrides[d.id];
+    return o ? { ...d, x:o.x, y:o.y, o:o.o, cp:o.cp } : d;
+  }, [layoutOverrides]);
+  const effGrande = useMemo(() => GRANDE.map(applyOverride), [applyOverride]);
+  const effPetite = useMemo(() => PETITE.map(applyOverride), [applyOverride]);
+
+  const persistDeskLayout = async (deskId, x, y, o, cp) => {
+    setLayoutOverrides(prev => ({ ...prev, [deskId]: { x, y, o, cp } }));
+    await fetch(`${API_BASE}/desk-layout/${deskId}`, { method:"PUT", headers:{ "Content-Type":"application/json" }, body: JSON.stringify({ x, y, o, cp }) });
+  };
+  const moveDesk = (deskId, x, y) => {
+    const d = [...effGrande, ...effPetite].find(dk => dk.id === deskId);
+    if (d) persistDeskLayout(deskId, x, y, d.o, d.cp);
+  };
+  const rotateDesk = deskId => {
+    const d = [...effGrande, ...effPetite].find(dk => dk.id === deskId);
+    if (!d) return;
+    const { o, cp } = nextRotation(d.cp);
+    persistDeskLayout(deskId, d.x, d.y, o, cp);
+  };
+  const resetLayout = async () => {
+    setLayoutOverrides({});
+    await fetch(`${API_BASE}/desk-layout`, { method:"DELETE" });
+  };
+
+  const allDesks = [...effGrande.map(d => ({ ...d, room:"Grande Salle" })), ...effPetite.map(d => ({ ...d, room:"Petite Salle" }))];
   const occCount = Object.values(assignments).filter(a => a?.stagiaireId).length;
   const unaCount = Object.values(assignments).filter(a => a?.unavailable).length;
   const freeCount = allDesks.length - occCount - unaCount;
@@ -507,8 +587,22 @@ export default function App() {
                       <div style={{ width:14, height:14, borderRadius:4, background:c, opacity:0.7 }}/>{l}
                     </div>
                   ))}
-                  <div style={{ marginLeft:"auto", fontSize:12, color:T.textMuted }}>
-                    {occCount} occupé{occCount > 1 ? "s" : ""} · {freeCount} libre{freeCount > 1 ? "s" : ""} · {unaCount} indispo.
+                  {!editLayout && (
+                    <div style={{ fontSize:12, color:T.textMuted }}>
+                      {occCount} occupé{occCount > 1 ? "s" : ""} · {freeCount} libre{freeCount > 1 ? "s" : ""} · {unaCount} indispo.
+                    </div>
+                  )}
+                  <div style={{ marginLeft:"auto", display:"flex", gap:8, alignItems:"center" }}>
+                    {editLayout && (
+                      <span style={{ fontSize:12, color:T.textMuted }}>Glisser pour déplacer, pivoter avec l'icône</span>
+                    )}
+                    {editLayout && Object.keys(layoutOverrides).length > 0 && (
+                      <button onClick={resetLayout} style={btnO(T)}>Réinitialiser</button>
+                    )}
+                    <button onClick={() => { setEditLayout(p => !p); setSelDesk(null); setDeskModal(false); }}
+                      style={editLayout ? { ...btnP, background:"#22c55e" } : btnO(T)}>
+                      <SvgIcon d={IC.move} size={14}/><span>{editLayout ? "Terminer" : "Modifier la disposition"}</span>
+                    </button>
                   </div>
                 </div>
 
@@ -534,9 +628,10 @@ export default function App() {
                       {/* Door label */}
                       <div style={{ position:"absolute", right:6, top:"50%", transform:"translateY(-50%)", fontSize:10, color:T.textFaint, fontWeight:500, letterSpacing:"0.04em" }}>Porte ▷</div>
                       {/* Desks */}
-                      {GRANDE.map(d => (
+                      {effGrande.map(d => (
                         <DeskUnit key={d.id} desk={d} status={getDeskStatus(d.id)} name={getDeskName(d.id)} dark={dark}
-                          isSelected={selDesk === d.id}
+                          isSelected={selDesk === d.id} editable={editLayout} roomW={440} roomH={430}
+                          onMove={moveDesk} onRotate={rotateDesk}
                           onClick={dk => { setSelDesk(dk.id); setDeskModal(true); }}/>
                       ))}
                     </div>
@@ -558,9 +653,10 @@ export default function App() {
                       <div style={{ position:"absolute", bottom:0, left:0, right:0, height:3, background:T.wall, borderRadius:"0 0 10px 10px" }}/>
                       <div style={{ position:"absolute", top:3, left:3, right:3, bottom:3, background:T.floorBg, borderRadius:7 }}/>
                       <div style={{ position:"absolute", left:6, top:"50%", transform:"translateY(-50%)", fontSize:10, color:T.textFaint, fontWeight:500, letterSpacing:"0.04em" }}>◁ Porte</div>
-                      {PETITE.map(d => (
+                      {effPetite.map(d => (
                         <DeskUnit key={d.id} desk={d} status={getDeskStatus(d.id)} name={getDeskName(d.id)} dark={dark}
-                          isSelected={selDesk === d.id}
+                          isSelected={selDesk === d.id} editable={editLayout} roomW={380} roomH={430}
+                          onMove={moveDesk} onRotate={rotateDesk}
                           onClick={dk => { setSelDesk(dk.id); setDeskModal(true); }}/>
                       ))}
                     </div>

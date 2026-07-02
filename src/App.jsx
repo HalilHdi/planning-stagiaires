@@ -50,8 +50,33 @@ const DESK_COLORS = {
   free:        { bg:"#d1fae5", border:"#22c55e", text:"#166534", chair:"#86efac" },
   unavailable: { bg:"#f1f5f9", border:"#cbd5e1", text:"#94a3b8", chair:"#e2e8f0" },
 };
+function deskColor(status, dark) {
+  const c = DESK_COLORS[status];
+  return dark ? { ...c, bg:`${c.border}22`, text:c.border, chair:`${c.border}55` } : c;
+}
+function chipColor(meta, dark) {
+  return dark ? { bg:`${meta.dot}26`, fg:meta.dot, dot:meta.dot } : { bg:meta.bg, fg:meta.fg, dot:meta.dot };
+}
 
-function DeskUnit({ desk, status, name, onClick, isSelected }) {
+const THEMES = {
+  light: {
+    pageBg:"#f4f5f7", surface:"#ffffff", surfaceAlt:"#f9fafb", surfaceHover:"#f3f4f6",
+    border:"#e5e7eb", borderLight:"#f3f4f6", text:"#1a2332", textStrong:"#111827",
+    textMuted:"#6b7280", textFaint:"#9ca3af", inputBg:"#fafafa",
+    overlay:"rgba(0,0,0,0.35)", overlayStrong:"rgba(0,0,0,0.4)",
+    floorBg:"#f8fafc", wall:"#cbd5e1", shadow:"rgba(0,0,0,0.05)",
+  },
+  dark: {
+    pageBg:"#0f1420", surface:"#1a2130", surfaceAlt:"#212938", surfaceHover:"#2a3344",
+    border:"#2d3a4d", borderLight:"#2a3344", text:"#e5e7eb", textStrong:"#f3f4f6",
+    textMuted:"#9aa5b8", textFaint:"#6b7690", inputBg:"#242c3d",
+    overlay:"rgba(0,0,0,0.55)", overlayStrong:"rgba(0,0,0,0.6)",
+    floorBg:"#1e2634", wall:"#3a4658", shadow:"rgba(0,0,0,0.3)",
+  },
+};
+function tint(color, dark, lightBg) { return dark ? `${color}22` : lightBg; }
+
+function DeskUnit({ desk, status, name, onClick, isSelected, dark }) {
   const isH = desk.o === "h";
   const dW = isH ? 116 : 46;
   const dH = isH ? 46 : 116;
@@ -64,7 +89,7 @@ function DeskUnit({ desk, status, name, onClick, isSelected }) {
     right:  { x: dW + gap, y: dH/2 - cr },
   };
   const co = offsets[desk.cp];
-  const c = DESK_COLORS[status];
+  const c = deskColor(status, dark);
   const [hov, setHov] = useState(false);
   return (
     <div
@@ -139,6 +164,8 @@ const IC = {
   check:    "M20 6L9 17l-5-5",
   collapse: "M11 19l-7-7 7-7 M18 19l-7-7 7-7",
   expand:   "M13 5l7 7-7 7 M6 5l7 7-7 7",
+  sun:      "M12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10z M12 1v2 M12 21v2 M4.22 4.22l1.42 1.42 M18.36 18.36l1.42 1.42 M1 12h2 M21 12h2 M4.22 19.78l1.42-1.42 M18.36 5.64l1.42-1.42",
+  moon:     "M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z",
 };
 
 export default function App() {
@@ -155,6 +182,13 @@ export default function App() {
   const [selDesk, setSelDesk] = useState(null);
   const [deskModal, setDeskModal] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
+  const [dark, setDark] = useState(() => {
+    const saved = localStorage.getItem("theme");
+    if (saved) return saved === "dark";
+    return window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false;
+  });
+  const T = useMemo(() => (dark ? THEMES.dark : THEMES.light), [dark]);
+  useEffect(() => { localStorage.setItem("theme", dark ? "dark" : "light"); }, [dark]);
 
   const fetchStagiaires = useCallback(async () => {
     const res = await fetch(`${API_BASE}/stagiaires`);
@@ -282,7 +316,7 @@ export default function App() {
   ];
 
   return (
-    <div style={{ display:"flex", height:"100vh", width:"100vw", fontFamily:"'Inter',-apple-system,system-ui,sans-serif", color:"#1a2332", background:"#f4f5f7", overflow:"hidden", position:"fixed", top:0, left:0 }}>
+    <div style={{ display:"flex", height:"100vh", width:"100vw", fontFamily:"'Inter',-apple-system,system-ui,sans-serif", color:T.text, background:T.pageBg, overflow:"hidden", position:"fixed", top:0, left:0 }}>
 
       {/* ── SIDEBAR ── */}
       <div style={{ width: collapsed ? 56 : 200, minWidth: collapsed ? 56 : 200, background:"#1a2332", display:"flex", flexDirection:"column", transition:"all 0.25s ease", overflow:"hidden", zIndex:20 }}>
@@ -316,10 +350,13 @@ export default function App() {
       {/* ── MAIN AREA ── */}
       <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden" }}>
         {/* Top bar */}
-        <div style={{ background:"#fff", borderBottom:"1px solid #e5e7eb", padding:"0 24px", display:"flex", alignItems:"center", justifyContent:"space-between", minHeight:56, gap:12, flexShrink:0 }}>
-          <h1 style={{ fontSize:16, fontWeight:700, margin:0 }}>{NAV.find(n => n.id === view)?.label}</h1>
+        <div style={{ background:T.surface, borderBottom:`1px solid ${T.border}`, padding:"0 24px", display:"flex", alignItems:"center", justifyContent:"space-between", minHeight:56, gap:12, flexShrink:0 }}>
+          <h1 style={{ fontSize:16, fontWeight:700, margin:0, color:T.text }}>{NAV.find(n => n.id === view)?.label}</h1>
           <div style={{ display:"flex", gap:8 }}>
-            <button onClick={exportXL} style={btnO}><SvgIcon d={IC.dl} size={14}/><span>Export</span></button>
+            <button onClick={() => setDark(p => !p)} title={dark ? "Passer en thème clair" : "Passer en thème sombre"} style={iBtn(T)} aria-label="Basculer le thème">
+              <SvgIcon d={dark ? IC.sun : IC.moon} size={15}/>
+            </button>
+            <button onClick={exportXL} style={btnO(T)}><SvgIcon d={IC.dl} size={14}/><span>Export</span></button>
             <button onClick={openAdd} style={btnP}><SvgIcon d={IC.plus} size={14}/><span>Stagiaire</span></button>
           </div>
         </div>
@@ -338,9 +375,9 @@ export default function App() {
                     { l:"À venir",          v:counts.upcoming, c:"#3b82f6", bg:"#eff6ff" },
                     { l:"Terminé",          v:counts.completed, c:"#9ca3af", bg:"#f9fafb" },
                   ].map((c, i) => (
-                    <div key={i} style={{ background:c.bg, border:"1px solid #e5e7eb", borderRadius:12, padding:"22px 24px" }}>
+                    <div key={i} style={{ background:tint(c.c, dark, c.bg), border:`1px solid ${T.border}`, borderRadius:12, padding:"22px 24px" }}>
                       <div style={{ fontSize:36, fontWeight:800, color:c.c }}>{c.v}</div>
-                      <div style={{ fontSize:13, color:"#6b7280", marginTop:4, fontWeight:500 }}>{c.l}</div>
+                      <div style={{ fontSize:13, color:T.textMuted, marginTop:4, fontWeight:500 }}>{c.l}</div>
                     </div>
                   ))}
                 </div>
@@ -349,22 +386,22 @@ export default function App() {
                     { l:"Bureaux occupés",  v:occCount, c:"#3b82f6", bg:"#eff6ff" },
                     { l:"Bureaux libres",   v:freeCount, c:"#22c55e", bg:"#f0fdf4" },
                   ].map((c, i) => (
-                    <div key={i} style={{ background:c.bg, border:"1px solid #e5e7eb", borderRadius:12, padding:"22px 24px" }}>
+                    <div key={i} style={{ background:tint(c.c, dark, c.bg), border:`1px solid ${T.border}`, borderRadius:12, padding:"22px 24px" }}>
                       <div style={{ fontSize:36, fontWeight:800, color:c.c }}>{c.v}</div>
-                      <div style={{ fontSize:13, color:"#6b7280", marginTop:4, fontWeight:500 }}>{c.l}</div>
+                      <div style={{ fontSize:13, color:T.textMuted, marginTop:4, fontWeight:500 }}>{c.l}</div>
                     </div>
                   ))}
                 </div>
-                <div style={{ background:"#fff", borderRadius:14, border:"1px solid #e5e7eb", padding:20 }}>
+                <div style={{ background:T.surface, borderRadius:14, border:`1px solid ${T.border}`, padding:20 }}>
                   <div style={{ fontSize:14, fontWeight:700, marginBottom:14 }}>Stagiaires en cours</div>
                   {stags.filter(s => getStatus(s.debut, s.fin) === "active").map((s, i) => (
-                    <div key={s.id} style={{ display:"flex", alignItems:"center", gap:12, padding:"8px 0", borderBottom:"1px solid #f3f4f6" }}>
+                    <div key={s.id} style={{ display:"flex", alignItems:"center", gap:12, padding:"8px 0", borderBottom:`1px solid ${T.borderLight}` }}>
                       <div style={{ width:32, height:32, borderRadius:"50%", background:ACCENT[i%ACCENT.length], color:"#fff", display:"flex", alignItems:"center", justifyContent:"center", fontWeight:700, fontSize:12, flexShrink:0 }}>{s.prenom[0]}{s.nom[0]}</div>
-                      <div style={{ flex:1 }}><div style={{ fontWeight:600, fontSize:13 }}>{s.prenom} {s.nom}</div><div style={{ fontSize:11, color:"#6b7280" }}>{s.poste}</div></div>
-                      <div style={{ fontSize:11, color: daysLeft(s.fin) <= 7 ? "#dc2626" : "#6b7280" }}>{daysLeft(s.fin) > 0 ? `${daysLeft(s.fin)}j restants` : "Dernier jour"}</div>
+                      <div style={{ flex:1 }}><div style={{ fontWeight:600, fontSize:13 }}>{s.prenom} {s.nom}</div><div style={{ fontSize:11, color:T.textMuted }}>{s.poste}</div></div>
+                      <div style={{ fontSize:11, color: daysLeft(s.fin) <= 7 ? "#dc2626" : T.textMuted }}>{daysLeft(s.fin) > 0 ? `${daysLeft(s.fin)}j restants` : "Dernier jour"}</div>
                     </div>
                   ))}
-                  {counts.active === 0 && <div style={{ color:"#9ca3af", fontSize:13 }}>Aucun stagiaire en cours</div>}
+                  {counts.active === 0 && <div style={{ color:T.textFaint, fontSize:13 }}>Aucun stagiaire en cours</div>}
                 </div>
               </div>
             )}
@@ -375,36 +412,36 @@ export default function App() {
                 <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16, flexWrap:"wrap", gap:10 }}>
                   <div style={{ display:"flex", gap:6 }}>
                     {[["all","Tous"],["active","En cours"],["upcoming","À venir"],["completed","Terminé"]].map(([k, l]) => (
-                      <button key={k} onClick={() => setFilter(k)} style={{ padding:"5px 12px", borderRadius:7, border: filter === k ? "1.5px solid #3b82f6" : "1px solid #e5e7eb", background: filter === k ? "#eff6ff" : "#fff", color: filter === k ? "#2563eb" : "#6b7280", fontSize:12, fontWeight:500, cursor:"pointer" }}>
-                        {l} <span style={{ color: filter === k ? "#3b82f6" : "#9ca3af" }}>{counts[k]}</span>
+                      <button key={k} onClick={() => setFilter(k)} style={{ padding:"5px 12px", borderRadius:7, border: filter === k ? "1.5px solid #3b82f6" : `1px solid ${T.border}`, background: filter === k ? tint("#3b82f6", dark, "#eff6ff") : T.surface, color: filter === k ? "#2563eb" : T.textMuted, fontSize:12, fontWeight:500, cursor:"pointer" }}>
+                        {l} <span style={{ color: filter === k ? "#3b82f6" : T.textFaint }}>{counts[k]}</span>
                       </button>
                     ))}
                   </div>
                   <div style={{ position:"relative" }}>
-                    <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Rechercher…" style={{ padding:"7px 12px 7px 32px", borderRadius:8, border:"1px solid #e5e7eb", fontSize:13, width:200, outline:"none", background:"#fff" }}/>
-                    <span style={{ position:"absolute", left:10, top:"50%", transform:"translateY(-50%)", color:"#9ca3af" }}><SvgIcon d={IC.search} size={14}/></span>
+                    <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Rechercher…" style={{ padding:"7px 12px 7px 32px", borderRadius:8, border:`1px solid ${T.border}`, fontSize:13, width:200, outline:"none", background:T.surface, color:T.textStrong }}/>
+                    <span style={{ position:"absolute", left:10, top:"50%", transform:"translateY(-50%)", color:T.textFaint }}><SvgIcon d={IC.search} size={14}/></span>
                   </div>
                 </div>
-                <div style={{ background:"#fff", borderRadius:14, border:"1px solid #e5e7eb", overflow:"hidden" }}>
-                  <div style={{ display:"grid", gridTemplateColumns:"2fr 1.6fr 1fr 0.8fr 0.8fr 70px", gap:8, padding:"10px 16px", background:"#f9fafb", borderBottom:"1px solid #e5e7eb", fontSize:11, fontWeight:600, color:"#6b7280", textTransform:"uppercase", letterSpacing:"0.04em" }}>
+                <div style={{ background:T.surface, borderRadius:14, border:`1px solid ${T.border}`, overflow:"hidden" }}>
+                  <div style={{ display:"grid", gridTemplateColumns:"2fr 1.6fr 1fr 0.8fr 0.8fr 70px", gap:8, padding:"10px 16px", background:T.surfaceAlt, borderBottom:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:T.textMuted, textTransform:"uppercase", letterSpacing:"0.04em" }}>
                     <span>Stagiaire</span><span>Formation / Rythme</span><span>Période</span><span>Durée</span><span>Statut</span><span></span>
                   </div>
-                  {filtered.length === 0 && <div style={{ padding:40, textAlign:"center", color:"#9ca3af", fontSize:13 }}>Aucun stagiaire</div>}
-                  {filtered.map((s, i) => { const st = getStatus(s.debut, s.fin); const m = SMETA[st]; return (
-                    <div key={s.id} style={{ display:"grid", gridTemplateColumns:"2fr 1.6fr 1fr 0.8fr 0.8fr 70px", gap:8, padding:"11px 16px", borderBottom:"1px solid #f3f4f6", alignItems:"center", fontSize:13 }}>
+                  {filtered.length === 0 && <div style={{ padding:40, textAlign:"center", color:T.textFaint, fontSize:13 }}>Aucun stagiaire</div>}
+                  {filtered.map((s, i) => { const st = getStatus(s.debut, s.fin); const m = chipColor(SMETA[st], dark); return (
+                    <div key={s.id} style={{ display:"grid", gridTemplateColumns:"2fr 1.6fr 1fr 0.8fr 0.8fr 70px", gap:8, padding:"11px 16px", borderBottom:`1px solid ${T.borderLight}`, alignItems:"center", fontSize:13 }}>
                       <div style={{ display:"flex", alignItems:"center", gap:10 }}>
                         <div style={{ width:32, height:32, borderRadius:"50%", background:ACCENT[i%ACCENT.length], color:"#fff", display:"flex", alignItems:"center", justifyContent:"center", fontWeight:700, fontSize:12, flexShrink:0 }}>{s.prenom[0]}{s.nom[0]}</div>
-                        <div><div style={{ fontWeight:600 }}>{s.prenom} {s.nom}</div>{st === "active" && <div style={{ fontSize:11, color: daysLeft(s.fin) <= 7 ? "#dc2626" : "#6b7280" }}>{daysLeft(s.fin) > 0 ? `${daysLeft(s.fin)}j restants` : "Dernier jour"}</div>}</div>
+                        <div><div style={{ fontWeight:600 }}>{s.prenom} {s.nom}</div>{st === "active" && <div style={{ fontSize:11, color: daysLeft(s.fin) <= 7 ? "#dc2626" : T.textMuted }}>{daysLeft(s.fin) > 0 ? `${daysLeft(s.fin)}j restants` : "Dernier jour"}</div>}</div>
                       </div>
-                      <span style={{ color:"#4b5563" }}>{s.poste}</span>
-                      <span style={{ color:"#6b7280", fontSize:12 }}>{fmtDate(s.debut)} → {fmtDate(s.fin)}</span>
-                      <span style={{ color:"#6b7280", fontSize:12 }}>{dur(s.debut, s.fin)}</span>
+                      <span style={{ color:T.text }}>{s.poste}</span>
+                      <span style={{ color:T.textMuted, fontSize:12 }}>{fmtDate(s.debut)} → {fmtDate(s.fin)}</span>
+                      <span style={{ color:T.textMuted, fontSize:12 }}>{dur(s.debut, s.fin)}</span>
                       <span style={{ display:"inline-flex", alignItems:"center", gap:4, padding:"3px 8px", borderRadius:6, background:m.bg, color:m.fg, fontSize:11, fontWeight:600, width:"fit-content" }}>
-                        <span style={{ width:6, height:6, borderRadius:"50%", background:m.dot }}/>{m.label}
+                        <span style={{ width:6, height:6, borderRadius:"50%", background:m.dot }}/>{SMETA[st].label}
                       </span>
                       <div style={{ display:"flex", gap:4, justifyContent:"flex-end" }}>
-                        <button onClick={() => openEdit(s)} style={iBtn}><SvgIcon d={IC.edit} size={13}/></button>
-                        <button onClick={() => remove(s.id)} style={{ ...iBtn, color:"#ef4444" }}><SvgIcon d={IC.trash} size={13}/></button>
+                        <button onClick={() => openEdit(s)} style={iBtn(T)}><SvgIcon d={IC.edit} size={13}/></button>
+                        <button onClick={() => remove(s.id)} style={{ ...iBtn(T), color:"#ef4444" }}><SvgIcon d={IC.trash} size={13}/></button>
                       </div>
                     </div>
                   ); })}
@@ -418,11 +455,11 @@ export default function App() {
                 {/* Legend */}
                 <div style={{ display:"flex", gap:20, marginBottom:16, alignItems:"center", flexWrap:"wrap" }}>
                   {[["Occupé","#3b82f6"],["Libre","#22c55e"],["Indisponible","#cbd5e1"]].map(([l, c]) => (
-                    <div key={l} style={{ display:"flex", alignItems:"center", gap:6, fontSize:12, color:"#4b5563" }}>
+                    <div key={l} style={{ display:"flex", alignItems:"center", gap:6, fontSize:12, color:T.text }}>
                       <div style={{ width:14, height:14, borderRadius:4, background:c, opacity:0.7 }}/>{l}
                     </div>
                   ))}
-                  <div style={{ marginLeft:"auto", fontSize:12, color:"#6b7280" }}>
+                  <div style={{ marginLeft:"auto", fontSize:12, color:T.textMuted }}>
                     {occCount} occupé{occCount > 1 ? "s" : ""} · {freeCount} libre{freeCount > 1 ? "s" : ""} · {unaCount} indispo.
                   </div>
                 </div>
@@ -433,24 +470,24 @@ export default function App() {
                     <div style={{ fontSize:13, fontWeight:700, marginBottom:10, display:"flex", alignItems:"center", gap:6 }}>
                       <div style={{ width:8, height:8, borderRadius:"50%", background:"#6366f1" }}/>
                       Grande Salle
-                      <span style={{ fontSize:11, fontWeight:400, color:"#9ca3af" }}>— 5 postes</span>
+                      <span style={{ fontSize:11, fontWeight:400, color:T.textFaint }}>— 5 postes</span>
                     </div>
                     <div style={{ position:"relative", width:440, height:430 }}
                       onClick={() => { setSelDesk(null); setDeskModal(false); }}>
                       {/* Walls */}
-                      <div style={{ position:"absolute", top:0, left:0, right:0, height:3, background:"#cbd5e1", borderRadius:"10px 10px 0 0" }}/>
-                      <div style={{ position:"absolute", top:0, left:0, bottom:0, width:3, background:"#cbd5e1", borderRadius:"10px 0 0 10px" }}/>
-                      <div style={{ position:"absolute", bottom:0, left:0, right:0, height:3, background:"#cbd5e1", borderRadius:"0 0 10px 10px" }}/>
+                      <div style={{ position:"absolute", top:0, left:0, right:0, height:3, background:T.wall, borderRadius:"10px 10px 0 0" }}/>
+                      <div style={{ position:"absolute", top:0, left:0, bottom:0, width:3, background:T.wall, borderRadius:"10px 0 0 10px" }}/>
+                      <div style={{ position:"absolute", bottom:0, left:0, right:0, height:3, background:T.wall, borderRadius:"0 0 10px 10px" }}/>
                       {/* Right wall with door gap, facing the Petite Salle */}
-                      <div style={{ position:"absolute", top:0, right:0, width:3, height:"42%", background:"#cbd5e1", borderRadius:"0 10px 0 0" }}/>
-                      <div style={{ position:"absolute", bottom:0, right:0, width:3, height:"42%", background:"#cbd5e1", borderRadius:"0 0 10px 0" }}/>
+                      <div style={{ position:"absolute", top:0, right:0, width:3, height:"42%", background:T.wall, borderRadius:"0 10px 0 0" }}/>
+                      <div style={{ position:"absolute", bottom:0, right:0, width:3, height:"42%", background:T.wall, borderRadius:"0 0 10px 0" }}/>
                       {/* Floor fill */}
-                      <div style={{ position:"absolute", top:3, left:3, right:3, bottom:3, background:"#f8fafc", borderRadius:7 }}/>
+                      <div style={{ position:"absolute", top:3, left:3, right:3, bottom:3, background:T.floorBg, borderRadius:7 }}/>
                       {/* Door label */}
-                      <div style={{ position:"absolute", right:6, top:"50%", transform:"translateY(-50%)", fontSize:10, color:"#b0b8c4", fontWeight:500, letterSpacing:"0.04em" }}>Porte ▷</div>
+                      <div style={{ position:"absolute", right:6, top:"50%", transform:"translateY(-50%)", fontSize:10, color:T.textFaint, fontWeight:500, letterSpacing:"0.04em" }}>Porte ▷</div>
                       {/* Desks */}
                       {GRANDE.map(d => (
-                        <DeskUnit key={d.id} desk={d} status={getDeskStatus(d.id)} name={getDeskName(d.id)}
+                        <DeskUnit key={d.id} desk={d} status={getDeskStatus(d.id)} name={getDeskName(d.id)} dark={dark}
                           isSelected={selDesk === d.id}
                           onClick={dk => { setSelDesk(dk.id); setDeskModal(true); }}/>
                       ))}
@@ -462,19 +499,19 @@ export default function App() {
                     <div style={{ fontSize:13, fontWeight:700, marginBottom:10, display:"flex", alignItems:"center", gap:6 }}>
                       <div style={{ width:8, height:8, borderRadius:"50%", background:"#ec4899" }}/>
                       Petite Salle
-                      <span style={{ fontSize:11, fontWeight:400, color:"#9ca3af" }}>— 6 postes</span>
+                      <span style={{ fontSize:11, fontWeight:400, color:T.textFaint }}>— 6 postes</span>
                     </div>
                     <div style={{ position:"relative", width:380, height:430 }}
                       onClick={() => { setSelDesk(null); setDeskModal(false); }}>
-                      <div style={{ position:"absolute", top:0, left:0, right:0, height:3, background:"#cbd5e1", borderRadius:"10px 10px 0 0" }}/>
-                      <div style={{ position:"absolute", top:0, left:0, width:3, height:"42%", background:"#cbd5e1", borderRadius:"10px 0 0 0" }}/>
-                      <div style={{ position:"absolute", bottom:0, left:0, width:3, height:"42%", background:"#cbd5e1", borderRadius:"0 0 0 10px" }}/>
-                      <div style={{ position:"absolute", top:0, right:0, bottom:0, width:3, background:"#cbd5e1", borderRadius:"0 10px 10px 0" }}/>
-                      <div style={{ position:"absolute", bottom:0, left:0, right:0, height:3, background:"#cbd5e1", borderRadius:"0 0 10px 10px" }}/>
-                      <div style={{ position:"absolute", top:3, left:3, right:3, bottom:3, background:"#f8fafc", borderRadius:7 }}/>
-                      <div style={{ position:"absolute", left:6, top:"50%", transform:"translateY(-50%)", fontSize:10, color:"#b0b8c4", fontWeight:500, letterSpacing:"0.04em" }}>◁ Porte</div>
+                      <div style={{ position:"absolute", top:0, left:0, right:0, height:3, background:T.wall, borderRadius:"10px 10px 0 0" }}/>
+                      <div style={{ position:"absolute", top:0, left:0, width:3, height:"42%", background:T.wall, borderRadius:"10px 0 0 0" }}/>
+                      <div style={{ position:"absolute", bottom:0, left:0, width:3, height:"42%", background:T.wall, borderRadius:"0 0 0 10px" }}/>
+                      <div style={{ position:"absolute", top:0, right:0, bottom:0, width:3, background:T.wall, borderRadius:"0 10px 10px 0" }}/>
+                      <div style={{ position:"absolute", bottom:0, left:0, right:0, height:3, background:T.wall, borderRadius:"0 0 10px 10px" }}/>
+                      <div style={{ position:"absolute", top:3, left:3, right:3, bottom:3, background:T.floorBg, borderRadius:7 }}/>
+                      <div style={{ position:"absolute", left:6, top:"50%", transform:"translateY(-50%)", fontSize:10, color:T.textFaint, fontWeight:500, letterSpacing:"0.04em" }}>◁ Porte</div>
                       {PETITE.map(d => (
-                        <DeskUnit key={d.id} desk={d} status={getDeskStatus(d.id)} name={getDeskName(d.id)}
+                        <DeskUnit key={d.id} desk={d} status={getDeskStatus(d.id)} name={getDeskName(d.id)} dark={dark}
                           isSelected={selDesk === d.id}
                           onClick={dk => { setSelDesk(dk.id); setDeskModal(true); }}/>
                       ))}
@@ -487,40 +524,40 @@ export default function App() {
             {/* ────── CALENDAR ────── */}
             {view === "calendar" && (
               <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
-                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", background:"#fff", borderRadius:12, border:"1px solid #e5e7eb", padding:"10px 16px" }}>
-                  <button onClick={() => navY(-1)} style={nBtn}><SvgIcon d={IC.chevL} size={16}/></button>
+                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", background:T.surface, borderRadius:12, border:`1px solid ${T.border}`, padding:"10px 16px" }}>
+                  <button onClick={() => navY(-1)} style={nBtn(T)}><SvgIcon d={IC.chevL} size={16}/></button>
                   <span style={{ fontWeight:700, fontSize:15 }}>{calMonth.y}</span>
-                  <button onClick={() => navY(1)} style={nBtn}><SvgIcon d={IC.chevR} size={16}/></button>
+                  <button onClick={() => navY(1)} style={nBtn(T)}><SvgIcon d={IC.chevR} size={16}/></button>
                 </div>
-                <div style={{ background:"#fff", borderRadius:14, border:"1px solid #e5e7eb", overflow:"auto" }}>
+                <div style={{ background:T.surface, borderRadius:14, border:`1px solid ${T.border}`, overflow:"auto" }}>
                   <div style={{ minWidth:1180 }}>
-                    <div style={{ display:"grid", gridTemplateColumns:"90px 110px 110px 150px repeat(12,1fr)", background:"#f9fafb", borderBottom:"1px solid #e5e7eb" }}>
+                    <div style={{ display:"grid", gridTemplateColumns:"90px 110px 110px 150px repeat(12,1fr)", background:T.surfaceAlt, borderBottom:`1px solid ${T.border}` }}>
                       {["Statut","Prénom","Nom","Formation / Rythme"].map(h => (
-                        <div key={h} style={{ padding:"9px 10px", fontSize:11, fontWeight:600, color:"#6b7280", textTransform:"uppercase", letterSpacing:"0.03em" }}>{h}</div>
+                        <div key={h} style={{ padding:"9px 10px", fontSize:11, fontWeight:600, color:T.textMuted, textTransform:"uppercase", letterSpacing:"0.03em" }}>{h}</div>
                       ))}
                       {MONTHS_SHORT.map(m => (
-                        <div key={m} style={{ padding:"9px 4px", fontSize:11, fontWeight:600, color:"#6b7280", textAlign:"center", borderLeft:"1px solid #f3f4f6" }}>{m}</div>
+                        <div key={m} style={{ padding:"9px 4px", fontSize:11, fontWeight:600, color:T.textMuted, textAlign:"center", borderLeft:`1px solid ${T.borderLight}` }}>{m}</div>
                       ))}
                     </div>
-                    {yearStags.length === 0 && <div style={{ padding:30, textAlign:"center", color:"#9ca3af", fontSize:13 }}>Aucun stagiaire sur {calMonth.y}</div>}
+                    {yearStags.length === 0 && <div style={{ padding:30, textAlign:"center", color:T.textFaint, fontSize:13 }}>Aucun stagiaire sur {calMonth.y}</div>}
                     {yearStags.map(s => {
                       const idx = stags.findIndex(x => x.id === s.id); const color = ACCENT[idx%ACCENT.length];
-                      const st = getStatus(s.debut, s.fin); const m = SMETA[st];
+                      const st = getStatus(s.debut, s.fin); const m = chipColor(SMETA[st], dark);
                       return (
-                        <div key={s.id} style={{ display:"grid", gridTemplateColumns:"90px 110px 110px 150px repeat(12,1fr)", borderBottom:"1px solid #f3f4f6", alignItems:"center", minHeight:34 }}>
+                        <div key={s.id} style={{ display:"grid", gridTemplateColumns:"90px 110px 110px 150px repeat(12,1fr)", borderBottom:`1px solid ${T.borderLight}`, alignItems:"center", minHeight:34 }}>
                           <div style={{ padding:"0 10px" }}>
                             <span style={{ display:"inline-flex", alignItems:"center", gap:4, padding:"3px 8px", borderRadius:6, background:m.bg, color:m.fg, fontSize:10, fontWeight:600 }}>
-                              <span style={{ width:6, height:6, borderRadius:"50%", background:m.dot }}/>{m.label}
+                              <span style={{ width:6, height:6, borderRadius:"50%", background:m.dot }}/>{SMETA[st].label}
                             </span>
                           </div>
                           <div style={{ padding:"0 10px", fontSize:12, fontWeight:600, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{s.prenom}</div>
                           <div style={{ padding:"0 10px", fontSize:12, fontWeight:600, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{s.nom}</div>
-                          <div style={{ padding:"0 10px", fontSize:12, color:"#6b7280", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{s.poste}</div>
+                          <div style={{ padding:"0 10px", fontSize:12, color:T.textMuted, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{s.poste}</div>
                           {MONTHS_SHORT.map((_, mi) => {
                             const o = monthOverlap(s, mi);
                             const sd = parseLocal(s.debut), ed = parseLocal(s.fin);
                             return (
-                              <div key={mi} style={{ position:"relative", height:22, borderLeft:"1px solid #f9fafb" }}>
+                              <div key={mi} style={{ position:"relative", height:22, borderLeft:`1px solid ${T.borderLight}` }}>
                                 {o && (
                                   <div style={{
                                     position:"absolute", left:`${o.left}%`, width:`${o.width}%`, top:0, bottom:0,
@@ -555,10 +592,10 @@ export default function App() {
                       );
                     })}
                     {yearStags.length > 0 && (
-                      <div style={{ display:"grid", gridTemplateColumns:"90px 110px 110px 150px repeat(12,1fr)", background:"#f9fafb", borderTop:"1px solid #e5e7eb" }}>
-                        <div style={{ gridColumn:"1 / span 4", padding:"8px 10px", fontSize:11, fontWeight:700, color:"#374151" }}>Total / mois</div>
+                      <div style={{ display:"grid", gridTemplateColumns:"90px 110px 110px 150px repeat(12,1fr)", background:T.surfaceAlt, borderTop:`1px solid ${T.border}` }}>
+                        <div style={{ gridColumn:"1 / span 4", padding:"8px 10px", fontSize:11, fontWeight:700, color:T.text }}>Total / mois</div>
                         {monthCounts.map((c, i) => (
-                          <div key={i} style={{ textAlign:"center", padding:"8px 4px", fontSize:12, fontWeight:700, color: c > 0 ? "#2563eb" : "#d1d5db" }}>{c || "—"}</div>
+                          <div key={i} style={{ textAlign:"center", padding:"8px 4px", fontSize:12, fontWeight:700, color: c > 0 ? "#2563eb" : T.textFaint }}>{c || "—"}</div>
                         ))}
                       </div>
                     )}
@@ -570,25 +607,25 @@ export default function App() {
 
           {/* ── RIGHT PANEL (plan view) ── */}
           {view === "plan" && (
-            <div style={{ width:272, minWidth:272, borderLeft:"1px solid #e5e7eb", background:"#fff", overflow:"auto", flexShrink:0 }}>
-              <div style={{ padding:"16px 16px 10px", borderBottom:"1px solid #f3f4f6" }}>
+            <div style={{ width:272, minWidth:272, borderLeft:`1px solid ${T.border}`, background:T.surface, overflow:"auto", flexShrink:0 }}>
+              <div style={{ padding:"16px 16px 10px", borderBottom:`1px solid ${T.borderLight}` }}>
                 <div style={{ fontSize:14, fontWeight:700 }}>Affectations</div>
-                <div style={{ fontSize:11, color:"#6b7280", marginTop:2 }}>{occCount} / {allDesks.length} postes attribués</div>
+                <div style={{ fontSize:11, color:T.textMuted, marginTop:2 }}>{occCount} / {allDesks.length} postes attribués</div>
               </div>
               {["Grande Salle", "Petite Salle"].map(room => {
                 const desks = allDesks.filter(d => d.room === room);
                 return (
                   <div key={room}>
-                    <div style={{ padding:"10px 16px 4px", fontSize:11, fontWeight:700, color:"#9ca3af", textTransform:"uppercase", letterSpacing:"0.04em" }}>{room}</div>
+                    <div style={{ padding:"10px 16px 4px", fontSize:11, fontWeight:700, color:T.textFaint, textTransform:"uppercase", letterSpacing:"0.04em" }}>{room}</div>
                     {desks.map(d => {
-                      const st = getDeskStatus(d.id); const nm = getDeskName(d.id); const c = DESK_COLORS[st];
+                      const st = getDeskStatus(d.id); const nm = getDeskName(d.id); const c = deskColor(st, dark);
                       return (
                         <button key={d.id} onClick={() => { setSelDesk(d.id); setDeskModal(true); }}
-                          style={{ width:"100%", display:"flex", alignItems:"center", gap:10, padding:"8px 16px", border:"none", background: selDesk === d.id ? "#f0f4ff" : "transparent", cursor:"pointer", textAlign:"left", borderBottom:"1px solid #f9fafb", transition:"background 0.1s" }}>
+                          style={{ width:"100%", display:"flex", alignItems:"center", gap:10, padding:"8px 16px", border:"none", background: selDesk === d.id ? tint("#3b82f6", dark, "#f0f4ff") : "transparent", cursor:"pointer", textAlign:"left", borderBottom:`1px solid ${T.borderLight}`, transition:"background 0.1s" }}>
                           <div style={{ width:10, height:10, borderRadius:3, background:c.border, flexShrink:0 }}/>
                           <div style={{ flex:1, minWidth:0 }}>
                             <div style={{ fontSize:12, fontWeight:600 }}>{d.label}</div>
-                            <div style={{ fontSize:11, color: st === "occupied" ? c.text : "#9ca3af", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                            <div style={{ fontSize:11, color: st === "occupied" ? c.text : T.textFaint, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
                               {st === "occupied" ? nm : st === "unavailable" ? "Indisponible" : "Libre"}
                             </div>
                           </div>
@@ -599,10 +636,10 @@ export default function App() {
                   </div>
                 );
               })}
-              <div style={{ padding:"12px 16px 4px", fontSize:11, fontWeight:700, color:"#9ca3af", textTransform:"uppercase", letterSpacing:"0.04em", borderTop:"1px solid #e5e7eb", marginTop:4 }}>
+              <div style={{ padding:"12px 16px 4px", fontSize:11, fontWeight:700, color:T.textFaint, textTransform:"uppercase", letterSpacing:"0.04em", borderTop:`1px solid ${T.border}`, marginTop:4 }}>
                 Non affectés ({availStags.length})
               </div>
-              {availStags.length === 0 && <div style={{ padding:"8px 16px", fontSize:12, color:"#9ca3af" }}>Tous affectés</div>}
+              {availStags.length === 0 && <div style={{ padding:"8px 16px", fontSize:12, color:T.textFaint }}>Tous affectés</div>}
               {availStags.map(s => (
                 <div key={s.id} style={{ display:"flex", alignItems:"center", gap:8, padding:"6px 16px" }}>
                   <div style={{ width:24, height:24, borderRadius:"50%", background:ACCENT[stags.indexOf(s) % ACCENT.length], color:"#fff", display:"flex", alignItems:"center", justifyContent:"center", fontWeight:700, fontSize:9, flexShrink:0 }}>{s.prenom[0]}{s.nom[0]}</div>
@@ -616,57 +653,57 @@ export default function App() {
 
       {/* ── DESK MODAL ── */}
       {deskModal && selDesk && (
-        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.35)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:50, padding:16 }}
+        <div style={{ position:"fixed", inset:0, background:T.overlay, display:"flex", alignItems:"center", justifyContent:"center", zIndex:50, padding:16 }}
           onClick={() => { setDeskModal(false); setSelDesk(null); }}>
-          <div onClick={e => e.stopPropagation()} style={{ background:"#fff", borderRadius:16, width:"100%", maxWidth:380, boxShadow:"0 24px 48px rgba(0,0,0,0.18)", overflow:"hidden" }}>
+          <div onClick={e => e.stopPropagation()} style={{ background:T.surface, borderRadius:16, width:"100%", maxWidth:380, boxShadow:"0 24px 48px rgba(0,0,0,0.18)", overflow:"hidden" }}>
             {(() => {
               const desk = allDesks.find(d => d.id === selDesk);
               const st = getDeskStatus(selDesk);
               const a = assignments[selDesk];
               const assignee = a?.stagiaireId ? stags.find(s => s.id === a.stagiaireId) : null;
-              const c = DESK_COLORS[st];
+              const c = deskColor(st, dark);
               return (<>
-                <div style={{ padding:"16px 20px", borderBottom:"1px solid #f3f4f6", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                <div style={{ padding:"16px 20px", borderBottom:`1px solid ${T.borderLight}`, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
                   <div>
                     <div style={{ fontSize:15, fontWeight:700 }}>{desk.label} — {desk.room}</div>
                     <div style={{ display:"inline-flex", alignItems:"center", gap:5, marginTop:4, padding:"3px 8px", borderRadius:5, background:c.bg, fontSize:11, fontWeight:600, color:c.text }}>
                       <span style={{ width:6, height:6, borderRadius:"50%", background:c.border }}/>{st === "occupied" ? "Occupé" : st === "free" ? "Libre" : "Indisponible"}
                     </div>
                   </div>
-                  <button onClick={() => { setDeskModal(false); setSelDesk(null); }} style={{ width:30, height:30, borderRadius:8, border:"1px solid #e5e7eb", background:"#fff", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>
+                  <button onClick={() => { setDeskModal(false); setSelDesk(null); }} style={{ width:30, height:30, borderRadius:8, border:`1px solid ${T.border}`, background:T.surface, color:T.text, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>
                     <SvgIcon d={IC.x} size={14}/>
                   </button>
                 </div>
                 <div style={{ padding:"16px 20px" }}>
                   {st === "occupied" && assignee && (
                     <div style={{ marginBottom:16 }}>
-                      <div style={{ fontSize:12, fontWeight:600, color:"#6b7280", marginBottom:6 }}>Affecté à</div>
-                      <div style={{ display:"flex", alignItems:"center", gap:10, padding:10, background:"#f8fafc", borderRadius:10, border:"1px solid #e5e7eb" }}>
+                      <div style={{ fontSize:12, fontWeight:600, color:T.textMuted, marginBottom:6 }}>Affecté à</div>
+                      <div style={{ display:"flex", alignItems:"center", gap:10, padding:10, background:T.floorBg, borderRadius:10, border:`1px solid ${T.border}` }}>
                         <div style={{ width:36, height:36, borderRadius:"50%", background:"#3b82f6", color:"#fff", display:"flex", alignItems:"center", justifyContent:"center", fontWeight:700, fontSize:13 }}>{assignee.prenom[0]}{assignee.nom[0]}</div>
-                        <div><div style={{ fontWeight:600, fontSize:13 }}>{assignee.prenom} {assignee.nom}</div><div style={{ fontSize:11, color:"#6b7280" }}>{fmtDate(assignee.debut)} → {fmtDate(assignee.fin)}</div></div>
+                        <div><div style={{ fontWeight:600, fontSize:13 }}>{assignee.prenom} {assignee.nom}</div><div style={{ fontSize:11, color:T.textMuted }}>{fmtDate(assignee.debut)} → {fmtDate(assignee.fin)}</div></div>
                       </div>
-                      <button onClick={() => freeDesk(selDesk)} style={{ ...btnO, width:"100%", justifyContent:"center", marginTop:10, color:"#ef4444", borderColor:"#fecaca" }}>
+                      <button onClick={() => freeDesk(selDesk)} style={{ ...btnO(T), width:"100%", justifyContent:"center", marginTop:10, color:"#ef4444", borderColor:"#fecaca" }}>
                         <SvgIcon d={IC.trash} size={13}/><span>Libérer le poste</span>
                       </button>
                     </div>
                   )}
                   {st === "unavailable" && (
                     <div style={{ marginBottom:16 }}>
-                      <div style={{ padding:14, background:"#f1f5f9", borderRadius:10, textAlign:"center", color:"#64748b", fontSize:13, marginBottom:10 }}>Ce poste est marqué indisponible</div>
-                      <button onClick={() => freeDesk(selDesk)} style={{ ...btnO, width:"100%", justifyContent:"center" }}>
+                      <div style={{ padding:14, background:T.surfaceAlt, borderRadius:10, textAlign:"center", color:T.textMuted, fontSize:13, marginBottom:10 }}>Ce poste est marqué indisponible</div>
+                      <button onClick={() => freeDesk(selDesk)} style={{ ...btnO(T), width:"100%", justifyContent:"center" }}>
                         <SvgIcon d={IC.check} size={13}/><span>Rendre disponible</span>
                       </button>
                     </div>
                   )}
                   {(st === "free" || st === "occupied") && (<>
-                    <div style={{ fontSize:12, fontWeight:600, color:"#6b7280", marginBottom:6 }}>{st === "occupied" ? "Réaffecter" : "Affecter un stagiaire"}</div>
+                    <div style={{ fontSize:12, fontWeight:600, color:T.textMuted, marginBottom:6 }}>{st === "occupied" ? "Réaffecter" : "Affecter un stagiaire"}</div>
                     {availStags.length === 0 && !assignee ? (
-                      <div style={{ padding:14, background:"#f9fafb", borderRadius:10, textAlign:"center", color:"#9ca3af", fontSize:13 }}>Aucun stagiaire disponible</div>
+                      <div style={{ padding:14, background:T.surfaceAlt, borderRadius:10, textAlign:"center", color:T.textFaint, fontSize:13 }}>Aucun stagiaire disponible</div>
                     ) : (
-                      <div style={{ maxHeight:200, overflow:"auto", border:"1px solid #e5e7eb", borderRadius:10 }}>
+                      <div style={{ maxHeight:200, overflow:"auto", border:`1px solid ${T.border}`, borderRadius:10 }}>
                         {availStags.map(s => (
                           <button key={s.id} onClick={() => { assignDesk(selDesk, s.id); setDeskModal(false); setSelDesk(null); }}
-                            style={{ width:"100%", display:"flex", alignItems:"center", gap:10, padding:"9px 12px", border:"none", background:"#fff", cursor:"pointer", borderBottom:"1px solid #f3f4f6", textAlign:"left", color:"#111827" }}>
+                            style={{ width:"100%", display:"flex", alignItems:"center", gap:10, padding:"9px 12px", border:"none", background:T.surface, cursor:"pointer", borderBottom:`1px solid ${T.borderLight}`, textAlign:"left", color:T.textStrong }}>
                             <div style={{ width:28, height:28, borderRadius:"50%", background:ACCENT[stags.indexOf(s) % ACCENT.length], color:"#fff", display:"flex", alignItems:"center", justifyContent:"center", fontWeight:700, fontSize:10, flexShrink:0 }}>{s.prenom[0]}{s.nom[0]}</div>
                             <div style={{ fontSize:13, fontWeight:600 }}>{s.prenom} {s.nom}</div>
                           </button>
@@ -676,7 +713,7 @@ export default function App() {
                   </>)}
                   {st === "free" && (
                     <button onClick={() => { markUnavail(selDesk); setDeskModal(false); setSelDesk(null); }}
-                      style={{ ...btnO, width:"100%", justifyContent:"center", marginTop:10, color:"#6b7280" }}>
+                      style={{ ...btnO(T), width:"100%", justifyContent:"center", marginTop:10, color:T.textMuted }}>
                       <SvgIcon d={IC.ban} size={13}/><span>Marquer indisponible</span>
                     </button>
                   )}
@@ -689,28 +726,28 @@ export default function App() {
 
       {/* ── STAGIAIRE FORM MODAL ── */}
       {showForm && (
-        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.4)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:50, padding:16 }}>
-          <div style={{ background:"#fff", borderRadius:16, padding:24, width:"100%", maxWidth:420, boxShadow:"0 24px 48px rgba(0,0,0,0.18)" }}>
+        <div style={{ position:"fixed", inset:0, background:T.overlayStrong, display:"flex", alignItems:"center", justifyContent:"center", zIndex:50, padding:16 }}>
+          <div style={{ background:T.surface, borderRadius:16, padding:24, width:"100%", maxWidth:420, boxShadow:"0 24px 48px rgba(0,0,0,0.18)" }}>
             <div style={{ fontSize:17, fontWeight:700, marginBottom:20 }}>{editId ? "Modifier le stagiaire" : "Nouveau stagiaire"}</div>
             <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
               <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
-                <div><label style={lbl}>Prénom</label><input value={form.prenom} onChange={e => setForm(f => ({ ...f, prenom: e.target.value }))} style={inp} placeholder="Ex: Marie"/></div>
-                <div><label style={lbl}>Nom</label><input value={form.nom} onChange={e => setForm(f => ({ ...f, nom: e.target.value }))} style={inp} placeholder="Ex: Curie"/></div>
+                <div><label style={lbl(T)}>Prénom</label><input value={form.prenom} onChange={e => setForm(f => ({ ...f, prenom: e.target.value }))} style={inp(T)} placeholder="Ex: Marie"/></div>
+                <div><label style={lbl(T)}>Nom</label><input value={form.nom} onChange={e => setForm(f => ({ ...f, nom: e.target.value }))} style={inp(T)} placeholder="Ex: Curie"/></div>
               </div>
-              <div><label style={lbl}>Formation / Rythme</label><input value={form.poste} onChange={e => setForm(f => ({ ...f, poste: e.target.value }))} style={inp} placeholder="Ex: EFB -14h/18h"/></div>
+              <div><label style={lbl(T)}>Formation / Rythme</label><input value={form.poste} onChange={e => setForm(f => ({ ...f, poste: e.target.value }))} style={inp(T)} placeholder="Ex: EFB -14h/18h"/></div>
               <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
-                <div><label style={lbl}>Date de début</label><input type="date" value={form.debut} onChange={e => setForm(f => ({ ...f, debut: e.target.value }))} style={inp}/></div>
-                <div><label style={lbl}>Date de fin</label><input type="date" value={form.fin} onChange={e => setForm(f => ({ ...f, fin: e.target.value }))} style={inp}/></div>
+                <div><label style={lbl(T)}>Date de début</label><input type="date" value={form.debut} onChange={e => setForm(f => ({ ...f, debut: e.target.value }))} style={inp(T)}/></div>
+                <div><label style={lbl(T)}>Date de fin</label><input type="date" value={form.fin} onChange={e => setForm(f => ({ ...f, fin: e.target.value }))} style={inp(T)}/></div>
               </div>
               {form.debut && form.fin && new Date(form.fin) < new Date(form.debut) && (
-                <div style={{ fontSize:12, color:"#dc2626", background:"#fef2f2", padding:"6px 10px", borderRadius:6 }}>La date de fin doit être postérieure à la date de début.</div>
+                <div style={{ fontSize:12, color:"#dc2626", background:tint("#dc2626", dark, "#fef2f2"), padding:"6px 10px", borderRadius:6 }}>La date de fin doit être postérieure à la date de début.</div>
               )}
               {formError && (
-                <div style={{ fontSize:12, color:"#dc2626", background:"#fef2f2", padding:"6px 10px", borderRadius:6 }}>{formError}</div>
+                <div style={{ fontSize:12, color:"#dc2626", background:tint("#dc2626", dark, "#fef2f2"), padding:"6px 10px", borderRadius:6 }}>{formError}</div>
               )}
             </div>
             <div style={{ display:"flex", gap:10, marginTop:20, justifyContent:"flex-end" }}>
-              <button onClick={() => { setShowForm(false); resetForm(); }} style={btnO}>Annuler</button>
+              <button onClick={() => { setShowForm(false); resetForm(); }} style={btnO(T)}>Annuler</button>
               <button onClick={save}
                 disabled={!form.nom || !form.prenom || !form.debut || !form.fin || new Date(form.fin) < new Date(form.debut)}
                 style={{ ...btnP, opacity: (!form.nom || !form.prenom || !form.debut || !form.fin || new Date(form.fin) < new Date(form.debut)) ? 0.5 : 1 }}>
@@ -725,8 +762,8 @@ export default function App() {
 }
 
 const btnP = { padding:"8px 16px", borderRadius:8, border:"none", background:"linear-gradient(135deg,#3b82f6,#6366f1)", color:"#fff", cursor:"pointer", fontSize:13, fontWeight:600, display:"flex", alignItems:"center", gap:6 };
-const btnO = { padding:"8px 14px", borderRadius:8, border:"1px solid #e5e7eb", background:"#fff", cursor:"pointer", fontSize:13, fontWeight:500, color:"#374151", display:"flex", alignItems:"center", gap:6 };
-const iBtn = { width:28, height:28, borderRadius:6, border:"1px solid #e5e7eb", background:"#fff", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", color:"#6b7280" };
-const nBtn = { width:32, height:32, borderRadius:8, border:"1px solid #e5e7eb", background:"#fff", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", color:"#374151" };
-const inp = { padding:"8px 12px", borderRadius:8, border:"1px solid #e5e7eb", fontSize:13, width:"100%", outline:"none", boxSizing:"border-box", background:"#fafafa", color: "#111827", caretColor: "#111827" };
-const lbl = { fontSize:12, fontWeight:600, color:"#4b5563", display:"block", marginBottom:4 };
+const btnO = T => ({ padding:"8px 14px", borderRadius:8, border:`1px solid ${T.border}`, background:T.surface, cursor:"pointer", fontSize:13, fontWeight:500, color:T.text, display:"flex", alignItems:"center", gap:6 });
+const iBtn = T => ({ width:28, height:28, borderRadius:6, border:`1px solid ${T.border}`, background:T.surface, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", color:T.textMuted });
+const nBtn = T => ({ width:32, height:32, borderRadius:8, border:`1px solid ${T.border}`, background:T.surface, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", color:T.text });
+const inp = T => ({ padding:"8px 12px", borderRadius:8, border:`1px solid ${T.border}`, fontSize:13, width:"100%", outline:"none", boxSizing:"border-box", background:T.inputBg, color: T.textStrong, caretColor: T.textStrong });
+const lbl = T => ({ fontSize:12, fontWeight:600, color:T.textMuted, display:"block", marginBottom:4 });

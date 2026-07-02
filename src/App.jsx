@@ -192,6 +192,7 @@ export default function App() {
   const [selDesk, setSelDesk] = useState(null);
   const [deskModal, setDeskModal] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(null);
   const [dark, setDark] = useState(() => {
     const saved = localStorage.getItem("theme");
     if (saved) return saved === "dark";
@@ -461,7 +462,7 @@ export default function App() {
                           </div>
                           <div style={{ display:"flex", gap:4 }}>
                             <button onClick={() => openEdit(s)} style={iBtn(T)}><SvgIcon d={IC.edit} size={13}/></button>
-                            <button onClick={() => remove(s.id)} style={{ ...iBtn(T), color:"#ef4444" }}><SvgIcon d={IC.trash} size={13}/></button>
+                            <button onClick={() => setConfirmDelete(s)} style={{ ...iBtn(T), color:"#ef4444" }}><SvgIcon d={IC.trash} size={13}/></button>
                           </div>
                         </div>
                       </div>
@@ -487,7 +488,7 @@ export default function App() {
                       </span>
                       <div style={{ display:"flex", gap:4, justifyContent:"flex-end" }}>
                         <button onClick={() => openEdit(s)} style={iBtn(T)}><SvgIcon d={IC.edit} size={13}/></button>
-                        <button onClick={() => remove(s.id)} style={{ ...iBtn(T), color:"#ef4444" }}><SvgIcon d={IC.trash} size={13}/></button>
+                        <button onClick={() => setConfirmDelete(s)} style={{ ...iBtn(T), color:"#ef4444" }}><SvgIcon d={IC.trash} size={13}/></button>
                       </div>
                     </div>
                   ); })}
@@ -818,6 +819,23 @@ export default function App() {
                 style={{ ...btnP, opacity: (!form.nom || !form.prenom || !form.debut || !form.fin || new Date(form.fin) < new Date(form.debut)) ? 0.5 : 1 }}>
                 {editId ? "Enregistrer" : "Ajouter"}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── CONFIRM DELETE MODAL ── */}
+      {confirmDelete && (
+        <div style={{ position:"fixed", inset:0, background:T.overlayStrong, display:"flex", alignItems:"center", justifyContent:"center", zIndex:60, padding:16 }}
+          onClick={() => setConfirmDelete(null)}>
+          <div onClick={e => e.stopPropagation()} style={{ background:T.surface, borderRadius:16, padding:24, width:"100%", maxWidth:360, boxShadow:"0 24px 48px rgba(0,0,0,0.18)" }}>
+            <div style={{ fontSize:16, fontWeight:700, marginBottom:8 }}>Supprimer ce stagiaire ?</div>
+            <div style={{ fontSize:13, color:T.textMuted, lineHeight:1.5 }}>
+              {confirmDelete.prenom} {confirmDelete.nom} sera définitivement supprimé, ainsi que son affectation de bureau le cas échéant. Cette action est irréversible.
+            </div>
+            <div style={{ display:"flex", gap:10, marginTop:20, justifyContent:"flex-end" }}>
+              <button onClick={() => setConfirmDelete(null)} style={btnO(T)}>Annuler</button>
+              <button onClick={() => { remove(confirmDelete.id); setConfirmDelete(null); }} style={{ ...btnP, background:"#dc2626" }}>Supprimer</button>
             </div>
           </div>
         </div>

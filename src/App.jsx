@@ -45,6 +45,13 @@ const PETITE = [
   { id:"p6", x:218, y:260, o:"v", cp:"right",  label:"P6" },
 ];
 
+// Postes téléphoniques partagés, positionnés librement sur le plan (repère visuel uniquement)
+const PHONES = [
+  { id:"tel-272", label:"272", x:126, y:250, room:"Grande Salle" },
+  { id:"tel-292", label:"292", x:168, y:100, room:"Petite Salle" },
+  { id:"tel-249", label:"249", x:178, y:308, room:"Petite Salle" },
+];
+
 const DESK_COLORS = {
   occupied:    { bg:"#dbeafe", border:"#3b82f6", text:"#1e40af", chair:"#93c5fd" },
   free:        { bg:"#d1fae5", border:"#22c55e", text:"#166534", chair:"#86efac" },
@@ -181,6 +188,55 @@ function DeskUnit({ desk, status, name, onClick, isSelected, dark, editable, roo
   );
 }
 
+function PhoneMarker({ phone, dark, editable, roomW, roomH, onMove }) {
+  const size = 34;
+  const border = dark ? "#f59e0b" : "#d97706";
+  const bg = dark ? "#f59e0b22" : "#fef3c7";
+  const [dragPos, setDragPos] = useState(null);
+  const pos = dragPos ?? { x: phone.x, y: phone.y };
+
+  const handlePointerDown = e => {
+    if (!editable) return;
+    e.stopPropagation();
+    const startX = e.clientX, startY = e.clientY;
+    const originX = phone.x, originY = phone.y;
+    const clamp = (nx, ny) => ({
+      x: Math.max(0, Math.min(roomW - size, nx)),
+      y: Math.max(0, Math.min(roomH - size, ny)),
+    });
+    setDragPos(clamp(originX, originY));
+    const onPointerMove = ev => setDragPos(clamp(originX + (ev.clientX - startX), originY + (ev.clientY - startY)));
+    const onPointerUp = ev => {
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+      const final = clamp(originX + (ev.clientX - startX), originY + (ev.clientY - startY));
+      setDragPos(null);
+      onMove(phone.id, Math.round(final.x), Math.round(final.y));
+    };
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+  };
+
+  return (
+    <div
+      onPointerDown={handlePointerDown}
+      title={`Poste téléphonique ${phone.label}`}
+      style={{
+        position:"absolute", left:pos.x, top:pos.y, width:size, height:size, borderRadius:"50%",
+        background:bg, border:`2px solid ${border}`, color:border,
+        display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center",
+        cursor: editable ? "grab" : "default", touchAction: editable ? "none" : "auto",
+        boxShadow:"0 1px 4px rgba(0,0,0,0.12)", zIndex: 4,
+        transition: dragPos ? "none" : "all 0.2s",
+        borderStyle: editable ? "dashed" : "solid",
+      }}
+    >
+      <SvgIcon d={IC.phone} size={12}/>
+      <span style={{ fontSize:8, fontWeight:700, lineHeight:1, marginTop:1 }}>{phone.label}</span>
+    </div>
+  );
+}
+
 const SvgIcon = ({ d, size = 20 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
     stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
@@ -210,6 +266,7 @@ const IC = {
   moon:     "M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z",
   rotate:   "M23 4v6h-6 M1 20v-6h6 M3.51 9a9 9 0 0 1 14.85-3.36L23 10 M1 14l4.64 4.36A9 9 0 0 0 20.49 15",
   move:     "M5 9l-3 3 3 3 M9 5l3-3 3 3 M15 19l-3 3-3-3 M19 9l3 3-3 3 M2 12h20 M12 2v20",
+  phone:    "M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.362 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.338 1.85.573 2.81.7A2 2 0 0 1 22 16.92z",
 };
 
 function useViewportWidth() {
@@ -238,6 +295,7 @@ export default function App() {
   const [collapsed, setCollapsed] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [layoutOverrides, setLayoutOverrides] = useState({});
+  const [phoneOverrides, setPhoneOverrides] = useState({});
   const [editLayout, setEditLayout] = useState(false);
   const [dark, setDark] = useState(() => {
     const saved = localStorage.getItem("theme");
@@ -276,7 +334,15 @@ export default function App() {
     setLayoutOverrides(map);
   }, []);
 
-  useEffect(() => { fetchStagiaires(); fetchAssignments(); fetchDeskLayout(); }, [fetchStagiaires, fetchAssignments, fetchDeskLayout]);
+  const fetchPhoneLayout = useCallback(async () => {
+    const res = await fetch(`${API_BASE}/phone-layout`);
+    const data = await res.json();
+    const map = {};
+    data.forEach(r => { map[r.phone_id] = { x:r.x, y:r.y }; });
+    setPhoneOverrides(map);
+  }, []);
+
+  useEffect(() => { fetchStagiaires(); fetchAssignments(); fetchDeskLayout(); fetchPhoneLayout(); }, [fetchStagiaires, fetchAssignments, fetchDeskLayout, fetchPhoneLayout]);
   useEffect(() => { sessionStorage.setItem("view", view); }, [view]);
 
   const resetForm = () => { setForm({ nom:"", prenom:"", debut:"", fin:"", poste:"" }); setEditId(null); setFormError(""); };
@@ -396,6 +462,16 @@ export default function App() {
   const resetLayout = async () => {
     setLayoutOverrides({});
     await fetch(`${API_BASE}/desk-layout`, { method:"DELETE" });
+  };
+
+  const applyPhoneOverride = useCallback(p => {
+    const o = phoneOverrides[p.id];
+    return o ? { ...p, x:o.x, y:o.y } : p;
+  }, [phoneOverrides]);
+  const effPhones = useMemo(() => PHONES.map(applyPhoneOverride), [applyPhoneOverride]);
+  const movePhone = (phoneId, x, y) => {
+    setPhoneOverrides(prev => ({ ...prev, [phoneId]: { x, y } }));
+    fetch(`${API_BASE}/phone-layout/${phoneId}`, { method:"PUT", headers:{ "Content-Type":"application/json" }, body: JSON.stringify({ x, y }) });
   };
 
   const allDesks = [...effGrande.map(d => ({ ...d, room:"Grande Salle" })), ...effPetite.map(d => ({ ...d, room:"Petite Salle" }))];
@@ -587,6 +663,9 @@ export default function App() {
                       <div style={{ width:14, height:14, borderRadius:4, background:c, opacity:0.7 }}/>{l}
                     </div>
                   ))}
+                  <div style={{ display:"flex", alignItems:"center", gap:6, fontSize:12, color:T.text }}>
+                    <div style={{ width:14, height:14, borderRadius:"50%", background:"#f59e0b", opacity:0.7 }}/>Poste téléphonique
+                  </div>
                   {!editLayout && (
                     <div style={{ fontSize:12, color:T.textMuted }}>
                       {occCount} occupé{occCount > 1 ? "s" : ""} · {freeCount} libre{freeCount > 1 ? "s" : ""} · {unaCount} indispo.
@@ -634,6 +713,9 @@ export default function App() {
                           onMove={moveDesk} onRotate={rotateDesk}
                           onClick={dk => { setSelDesk(dk.id); setDeskModal(true); }}/>
                       ))}
+                      {effPhones.filter(p => p.room === "Grande Salle").map(p => (
+                        <PhoneMarker key={p.id} phone={p} dark={dark} editable={editLayout} roomW={440} roomH={430} onMove={movePhone}/>
+                      ))}
                     </div>
                   </div>
 
@@ -658,6 +740,9 @@ export default function App() {
                           isSelected={selDesk === d.id} editable={editLayout} roomW={380} roomH={430}
                           onMove={moveDesk} onRotate={rotateDesk}
                           onClick={dk => { setSelDesk(dk.id); setDeskModal(true); }}/>
+                      ))}
+                      {effPhones.filter(p => p.room === "Petite Salle").map(p => (
+                        <PhoneMarker key={p.id} phone={p} dark={dark} editable={editLayout} roomW={380} roomH={430} onMove={movePhone}/>
                       ))}
                     </div>
                   </div>

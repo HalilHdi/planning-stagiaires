@@ -59,6 +59,15 @@ async function initDB() {
     )
   `);
 
+  db.run(`
+    CREATE TABLE IF NOT EXISTS phone_layout (
+      phone_id TEXT PRIMARY KEY,
+      x INTEGER NOT NULL,
+      y INTEGER NOT NULL,
+      updated_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
   saveDB();
   console.log("✓ Tables initialisées");
 }
@@ -325,6 +334,39 @@ app.delete("/api/desk-layout", (req, res) => {
   }
 });
 
+// ─── ROUTES : POSTES TÉLÉPHONIQUES ───────────────────────────────
+
+// GET positions personnalisées des postes téléphoniques
+app.get("/api/phone-layout", (req, res) => {
+  try {
+    res.json(getAll("SELECT * FROM phone_layout"));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT déplacer un poste téléphonique
+app.put("/api/phone-layout/:phoneId", (req, res) => {
+  try {
+    const { phoneId } = req.params;
+    const { x, y } = req.body;
+
+    if (typeof x !== "number" || typeof y !== "number") {
+      return res.status(400).json({ error: "x et y sont requis" });
+    }
+
+    runQuery(
+      `INSERT OR REPLACE INTO phone_layout (phone_id, x, y, updated_at)
+       VALUES (?, ?, ?, datetime('now'))`,
+      [phoneId, x, y]
+    );
+
+    res.json({ phone_id: phoneId, x, y });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── ROUTES : STATISTIQUES ──────────────────────────────────────
 
 app.get("/api/stats", (req, res) => {
@@ -384,6 +426,8 @@ initDB().then(() => {
     console.log("║  GET    /api/desk-layout                 ║");
     console.log("║  PUT    /api/desk-layout/:id              ║");
     console.log("║  DELETE /api/desk-layout                 ║");
+    console.log("║  GET    /api/phone-layout                ║");
+    console.log("║  PUT    /api/phone-layout/:id             ║");
     console.log("║  GET    /api/stats                       ║");
     console.log("║  GET    /api/health                      ║");
     console.log("╚══════════════════════════════════════════╝");

@@ -168,6 +168,16 @@ const IC = {
   moon:     "M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z",
 };
 
+function useViewportWidth() {
+  const [w, setW] = useState(() => window.innerWidth);
+  useEffect(() => {
+    const onResize = () => setW(window.innerWidth);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+  return w;
+}
+
 export default function App() {
   const [stags, setStags] = useState([]);
   const [view, setView] = useState(() => sessionStorage.getItem("view") || "dashboard");
@@ -189,6 +199,10 @@ export default function App() {
   });
   const T = useMemo(() => (dark ? THEMES.dark : THEMES.light), [dark]);
   useEffect(() => { localStorage.setItem("theme", dark ? "dark" : "light"); }, [dark]);
+
+  const viewportWidth = useViewportWidth();
+  const isMobile = viewportWidth < 700;
+  const isNarrow = viewportWidth < 960;
 
   const fetchStagiaires = useCallback(async () => {
     const res = await fetch(`${API_BASE}/stagiaires`);
@@ -316,9 +330,11 @@ export default function App() {
   ];
 
   return (
-    <div style={{ display:"flex", height:"100vh", width:"100vw", fontFamily:"'Inter',-apple-system,system-ui,sans-serif", color:T.text, background:T.pageBg, overflow:"hidden", position:"fixed", top:0, left:0 }}>
+    <div style={{ display:"flex", flexDirection:"column", height:"100vh", width:"100vw", fontFamily:"'Inter',-apple-system,system-ui,sans-serif", color:T.text, background:T.pageBg, overflow:"hidden", position:"fixed", top:0, left:0 }}>
+    <div style={{ flex:1, display:"flex", overflow:"hidden", minHeight:0 }}>
 
       {/* ── SIDEBAR ── */}
+      {!isMobile && (
       <div style={{ width: collapsed ? 56 : 200, minWidth: collapsed ? 56 : 200, background:"#1a2332", display:"flex", flexDirection:"column", transition:"all 0.25s ease", overflow:"hidden", zIndex:20 }}>
         <div style={{ padding: collapsed ? "16px 12px" : "16px", display:"flex", alignItems:"center", gap:10, borderBottom:"1px solid #2d3a4d", minHeight:56 }}>
           <div style={{ width:32, height:32, borderRadius:9, background:"linear-gradient(135deg,#3b82f6,#6366f1)", display:"flex", alignItems:"center", justifyContent:"center", color:"#fff", fontWeight:800, fontSize:14, flexShrink:0 }}>S</div>
@@ -346,48 +362,49 @@ export default function App() {
           <SvgIcon d={collapsed ? IC.expand : IC.collapse} size={16}/>
         </button>
       </div>
+      )}
 
       {/* ── MAIN AREA ── */}
       <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden" }}>
         {/* Top bar */}
-        <div style={{ background:T.surface, borderBottom:`1px solid ${T.border}`, padding:"0 24px", display:"flex", alignItems:"center", justifyContent:"space-between", minHeight:56, gap:12, flexShrink:0 }}>
-          <h1 style={{ fontSize:16, fontWeight:700, margin:0, color:T.text }}>{NAV.find(n => n.id === view)?.label}</h1>
-          <div style={{ display:"flex", gap:8 }}>
+        <div style={{ background:T.surface, borderBottom:`1px solid ${T.border}`, padding: isMobile ? "0 12px" : "0 24px", display:"flex", alignItems:"center", justifyContent:"space-between", minHeight:56, gap:8, flexShrink:0 }}>
+          <h1 style={{ fontSize: isMobile ? 14 : 16, fontWeight:700, margin:0, color:T.text, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{NAV.find(n => n.id === view)?.label}</h1>
+          <div style={{ display:"flex", gap: isMobile ? 6 : 8, flexShrink:0 }}>
             <button onClick={() => setDark(p => !p)} title={dark ? "Passer en thème clair" : "Passer en thème sombre"} style={iBtn(T)} aria-label="Basculer le thème">
               <SvgIcon d={dark ? IC.sun : IC.moon} size={15}/>
             </button>
-            <button onClick={exportXL} style={btnO(T)}><SvgIcon d={IC.dl} size={14}/><span>Export</span></button>
-            <button onClick={openAdd} style={btnP}><SvgIcon d={IC.plus} size={14}/><span>Stagiaire</span></button>
+            <button onClick={exportXL} style={btnO(T)}><SvgIcon d={IC.dl} size={14}/>{!isMobile && <span>Export</span>}</button>
+            <button onClick={openAdd} style={btnP}><SvgIcon d={IC.plus} size={14}/>{!isMobile && <span>Stagiaire</span>}</button>
           </div>
         </div>
 
-        <div style={{ flex:1, display:"flex", overflow:"hidden" }}>
+        <div style={{ flex:1, display:"flex", flexDirection: isNarrow ? "column" : "row", overflow: isNarrow ? "auto" : "hidden" }}>
           {/* Scrollable content */}
-          <div style={{ flex:1, overflow:"auto", padding:24 }}>
+          <div style={{ flex:1, overflow: isNarrow ? "visible" : "auto", padding: isMobile ? 12 : 24, minWidth:0 }}>
 
             {/* ────── DASHBOARD ────── */}
             {view === "dashboard" && (
               <div>
-                <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:16, marginBottom:24 }}>
+                <div style={{ display:"grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4,1fr)", gap: isMobile ? 10 : 16, marginBottom: isMobile ? 16 : 24 }}>
                   {[
                     { l:"Total stagiaires", v:counts.all, c:"#6366f1", bg:"#eef2ff" },
                     { l:"En cours",         v:counts.active, c:"#22c55e", bg:"#f0fdf4" },
                     { l:"À venir",          v:counts.upcoming, c:"#3b82f6", bg:"#eff6ff" },
                     { l:"Terminé",          v:counts.completed, c:"#9ca3af", bg:"#f9fafb" },
                   ].map((c, i) => (
-                    <div key={i} style={{ background:tint(c.c, dark, c.bg), border:`1px solid ${T.border}`, borderRadius:12, padding:"22px 24px" }}>
-                      <div style={{ fontSize:36, fontWeight:800, color:c.c }}>{c.v}</div>
+                    <div key={i} style={{ background:tint(c.c, dark, c.bg), border:`1px solid ${T.border}`, borderRadius:12, padding: isMobile ? "16px 14px" : "22px 24px" }}>
+                      <div style={{ fontSize: isMobile ? 26 : 36, fontWeight:800, color:c.c }}>{c.v}</div>
                       <div style={{ fontSize:13, color:T.textMuted, marginTop:4, fontWeight:500 }}>{c.l}</div>
                     </div>
                   ))}
                 </div>
-                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16, marginBottom:24 }}>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap: isMobile ? 10 : 16, marginBottom: isMobile ? 16 : 24 }}>
                   {[
                     { l:"Bureaux occupés",  v:occCount, c:"#3b82f6", bg:"#eff6ff" },
                     { l:"Bureaux libres",   v:freeCount, c:"#22c55e", bg:"#f0fdf4" },
                   ].map((c, i) => (
-                    <div key={i} style={{ background:tint(c.c, dark, c.bg), border:`1px solid ${T.border}`, borderRadius:12, padding:"22px 24px" }}>
-                      <div style={{ fontSize:36, fontWeight:800, color:c.c }}>{c.v}</div>
+                    <div key={i} style={{ background:tint(c.c, dark, c.bg), border:`1px solid ${T.border}`, borderRadius:12, padding: isMobile ? "16px 14px" : "22px 24px" }}>
+                      <div style={{ fontSize: isMobile ? 26 : 36, fontWeight:800, color:c.c }}>{c.v}</div>
                       <div style={{ fontSize:13, color:T.textMuted, marginTop:4, fontWeight:500 }}>{c.l}</div>
                     </div>
                   ))}
@@ -417,11 +434,40 @@ export default function App() {
                       </button>
                     ))}
                   </div>
-                  <div style={{ position:"relative" }}>
-                    <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Rechercher…" style={{ padding:"7px 12px 7px 32px", borderRadius:8, border:`1px solid ${T.border}`, fontSize:13, width:200, outline:"none", background:T.surface, color:T.textStrong }}/>
+                  <div style={{ position:"relative", flex: isMobile ? "1 1 100%" : "none" }}>
+                    <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Rechercher…" style={{ padding:"7px 12px 7px 32px", borderRadius:8, border:`1px solid ${T.border}`, fontSize:13, width: isMobile ? "100%" : 200, outline:"none", background:T.surface, color:T.textStrong, boxSizing:"border-box" }}/>
                     <span style={{ position:"absolute", left:10, top:"50%", transform:"translateY(-50%)", color:T.textFaint }}><SvgIcon d={IC.search} size={14}/></span>
                   </div>
                 </div>
+                {isMobile ? (
+                  <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+                    {filtered.length === 0 && <div style={{ padding:40, textAlign:"center", color:T.textFaint, fontSize:13, background:T.surface, borderRadius:14, border:`1px solid ${T.border}` }}>Aucun stagiaire</div>}
+                    {filtered.map((s, i) => { const st = getStatus(s.debut, s.fin); const m = chipColor(SMETA[st], dark); return (
+                      <div key={s.id} style={{ background:T.surface, borderRadius:14, border:`1px solid ${T.border}`, padding:14 }}>
+                        <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                          <div style={{ width:36, height:36, borderRadius:"50%", background:ACCENT[i%ACCENT.length], color:"#fff", display:"flex", alignItems:"center", justifyContent:"center", fontWeight:700, fontSize:13, flexShrink:0 }}>{s.prenom[0]}{s.nom[0]}</div>
+                          <div style={{ flex:1, minWidth:0 }}>
+                            <div style={{ fontWeight:600, fontSize:14 }}>{s.prenom} {s.nom}</div>
+                            <div style={{ fontSize:12, color:T.textMuted, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{s.poste}</div>
+                          </div>
+                          <span style={{ display:"inline-flex", alignItems:"center", gap:4, padding:"3px 8px", borderRadius:6, background:m.bg, color:m.fg, fontSize:11, fontWeight:600, flexShrink:0 }}>
+                            <span style={{ width:6, height:6, borderRadius:"50%", background:m.dot }}/>{SMETA[st].label}
+                          </span>
+                        </div>
+                        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginTop:10, paddingTop:10, borderTop:`1px solid ${T.borderLight}` }}>
+                          <div style={{ fontSize:12, color:T.textMuted }}>
+                            {fmtDate(s.debut)} → {fmtDate(s.fin)} · {dur(s.debut, s.fin)}
+                            {st === "active" && <div style={{ color: daysLeft(s.fin) <= 7 ? "#dc2626" : T.textMuted, marginTop:2 }}>{daysLeft(s.fin) > 0 ? `${daysLeft(s.fin)}j restants` : "Dernier jour"}</div>}
+                          </div>
+                          <div style={{ display:"flex", gap:4 }}>
+                            <button onClick={() => openEdit(s)} style={iBtn(T)}><SvgIcon d={IC.edit} size={13}/></button>
+                            <button onClick={() => remove(s.id)} style={{ ...iBtn(T), color:"#ef4444" }}><SvgIcon d={IC.trash} size={13}/></button>
+                          </div>
+                        </div>
+                      </div>
+                    ); })}
+                  </div>
+                ) : (
                 <div style={{ background:T.surface, borderRadius:14, border:`1px solid ${T.border}`, overflow:"hidden" }}>
                   <div style={{ display:"grid", gridTemplateColumns:"2fr 1.6fr 1fr 0.8fr 0.8fr 70px", gap:8, padding:"10px 16px", background:T.surfaceAlt, borderBottom:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:T.textMuted, textTransform:"uppercase", letterSpacing:"0.04em" }}>
                     <span>Stagiaire</span><span>Formation / Rythme</span><span>Période</span><span>Durée</span><span>Statut</span><span></span>
@@ -446,6 +492,7 @@ export default function App() {
                     </div>
                   ); })}
                 </div>
+                )}
               </div>
             )}
 
@@ -464,7 +511,7 @@ export default function App() {
                   </div>
                 </div>
 
-                <div style={{ display:"flex", gap:72, flexWrap:"wrap", justifyContent:"center" }}>
+                <div style={{ display:"flex", gap: isMobile ? 24 : 72, flexWrap:"wrap", justifyContent: isNarrow ? "flex-start" : "center" }}>
                   {/* GRANDE SALLE */}
                   <div>
                     <div style={{ fontSize:13, fontWeight:700, marginBottom:10, display:"flex", alignItems:"center", gap:6 }}>
@@ -607,7 +654,7 @@ export default function App() {
 
           {/* ── RIGHT PANEL (plan view) ── */}
           {view === "plan" && (
-            <div style={{ width:272, minWidth:272, borderLeft:`1px solid ${T.border}`, background:T.surface, overflow:"auto", flexShrink:0 }}>
+            <div style={{ width: isNarrow ? "100%" : 272, minWidth: isNarrow ? 0 : 272, borderLeft: isNarrow ? "none" : `1px solid ${T.border}`, borderTop: isNarrow ? `1px solid ${T.border}` : "none", background:T.surface, overflow: isNarrow ? "visible" : "auto", flexShrink:0 }}>
               <div style={{ padding:"16px 16px 10px", borderBottom:`1px solid ${T.borderLight}` }}>
                 <div style={{ fontSize:14, fontWeight:700 }}>Affectations</div>
                 <div style={{ fontSize:11, color:T.textMuted, marginTop:2 }}>{occCount} / {allDesks.length} postes attribués</div>
@@ -650,6 +697,24 @@ export default function App() {
           )}
         </div>
       </div>
+    </div>
+
+      {/* ── MOBILE BOTTOM NAV ── */}
+      {isMobile && (
+        <nav style={{ display:"flex", background:"#1a2332", borderTop:"1px solid #2d3a4d", flexShrink:0 }}>
+          {NAV.map(n => (
+            <button key={n.id} onClick={() => setView(n.id)} style={{
+              flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:3,
+              padding:"8px 4px", background:"transparent", border:"none", cursor:"pointer",
+              color: view === n.id ? "#fff" : "#8896a8",
+              borderTop: view === n.id ? "2px solid #3b82f6" : "2px solid transparent",
+            }}>
+              <SvgIcon d={n.icon} size={18}/>
+              <span style={{ fontSize:10, fontWeight: view === n.id ? 600 : 400, whiteSpace:"nowrap" }}>{n.label}</span>
+            </button>
+          ))}
+        </nav>
+      )}
 
       {/* ── DESK MODAL ── */}
       {deskModal && selDesk && (

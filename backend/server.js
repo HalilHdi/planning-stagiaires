@@ -14,7 +14,7 @@ const APP_PASSWORD = process.env.APP_PASSWORD || "changeme";
 if (!process.env.APP_PASSWORD) {
   console.warn("⚠ APP_PASSWORD non défini, mot de passe par défaut 'changeme' utilisé. Définissez APP_PASSWORD dans backend/.env");
 }
-const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 jours
+const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 jours
 const sessions = new Map(); // token -> expiry timestamp
 
 app.use(cors());

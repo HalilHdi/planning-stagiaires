@@ -1,7 +1,5 @@
-require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
-const crypto = require("crypto");
 const initSqlJs = require("sql.js");
 const fs = require("fs");
 const path = require("path");
@@ -10,38 +8,8 @@ const app = express();
 const PORT = 3001;
 const DB_PATH = path.join(__dirname, "planning.db");
 
-const APP_PASSWORD = process.env.APP_PASSWORD || "changeme";
-if (!process.env.APP_PASSWORD) {
-  console.warn("⚠ APP_PASSWORD non défini, mot de passe par défaut 'changeme' utilisé. Définissez APP_PASSWORD dans backend/.env");
-}
-const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 jours
-const sessions = new Map(); // token -> expiry timestamp
-
 app.use(cors());
 app.use(express.json());
-
-// ─── AUTHENTIFICATION ───────────────────────────────────────────
-app.post("/api/login", (req, res) => {
-  const { password } = req.body;
-  if (password !== APP_PASSWORD) {
-    return res.status(401).json({ error: "Mot de passe incorrect" });
-  }
-  const token = crypto.randomBytes(32).toString("hex");
-  sessions.set(token, Date.now() + SESSION_TTL_MS);
-  res.json({ token });
-});
-
-app.use("/api", (req, res, next) => {
-  if (req.path === "/login" || req.path === "/health") return next();
-  const auth = req.headers.authorization;
-  const token = auth?.startsWith("Bearer ") ? auth.slice(7) : null;
-  const expiry = token && sessions.get(token);
-  if (!expiry || expiry < Date.now()) {
-    if (token) sessions.delete(token);
-    return res.status(401).json({ error: "Non authentifié" });
-  }
-  next();
-});
 
 let db;
 

@@ -166,8 +166,6 @@ const IC = {
   expand:   "M13 5l7 7-7 7 M6 5l7 7-7 7",
   sun:      "M12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10z M12 1v2 M12 21v2 M4.22 4.22l1.42 1.42 M18.36 18.36l1.42 1.42 M1 12h2 M21 12h2 M4.22 19.78l1.42-1.42 M18.36 5.64l1.42-1.42",
   moon:     "M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z",
-  lock:     "M19 11H5a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2z M7 11V7a5 5 0 0 1 10 0v4",
-  logout:   "M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4 M16 17l5-5-5-5 M21 12H9",
 };
 
 export default function App() {
@@ -192,46 +190,14 @@ export default function App() {
   const T = useMemo(() => (dark ? THEMES.dark : THEMES.light), [dark]);
   useEffect(() => { localStorage.setItem("theme", dark ? "dark" : "light"); }, [dark]);
 
-  const [token, setToken] = useState(() => localStorage.getItem("authToken"));
-  const [loginPwd, setLoginPwd] = useState("");
-  const [loginError, setLoginError] = useState("");
-  const [loginLoading, setLoginLoading] = useState(false);
-
-  const logout = useCallback(() => { localStorage.removeItem("authToken"); setToken(null); }, []);
-
-  const login = async e => {
-    e.preventDefault();
-    setLoginError(""); setLoginLoading(true);
-    try {
-      const res = await fetch(`${API_BASE}/login`, { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify({ password: loginPwd }) });
-      const data = await res.json();
-      if (!res.ok) { setLoginError(data.error || "Erreur de connexion"); return; }
-      localStorage.setItem("authToken", data.token);
-      setToken(data.token);
-      setLoginPwd("");
-    } catch {
-      setLoginError("Impossible de contacter le serveur");
-    } finally {
-      setLoginLoading(false);
-    }
-  };
-
-  const authFetch = useCallback(async (url, opts = {}) => {
-    const res = await fetch(url, { ...opts, headers: { ...(opts.headers || {}), Authorization: `Bearer ${token}` } });
-    if (res.status === 401) logout();
-    return res;
-  }, [token, logout]);
-
   const fetchStagiaires = useCallback(async () => {
-    const res = await authFetch(`${API_BASE}/stagiaires`);
-    if (!res.ok) return;
+    const res = await fetch(`${API_BASE}/stagiaires`);
     const data = await res.json();
     setStags(data);
-  }, [authFetch]);
+  }, []);
 
   const fetchAssignments = useCallback(async () => {
-    const res = await authFetch(`${API_BASE}/assignments`);
-    if (!res.ok) return;
+    const res = await fetch(`${API_BASE}/assignments`);
     const data = await res.json();
     const map = {};
     data.forEach(a => {
@@ -239,9 +205,9 @@ export default function App() {
       else if (a.stagiaire_id) map[a.desk_id] = { stagiaireId: a.stagiaire_id };
     });
     setAssignments(map);
-  }, [authFetch]);
+  }, []);
 
-  useEffect(() => { if (token) { fetchStagiaires(); fetchAssignments(); } }, [token, fetchStagiaires, fetchAssignments]);
+  useEffect(() => { fetchStagiaires(); fetchAssignments(); }, [fetchStagiaires, fetchAssignments]);
   useEffect(() => { sessionStorage.setItem("view", view); }, [view]);
 
   const resetForm = () => { setForm({ nom:"", prenom:"", debut:"", fin:"", poste:"" }); setEditId(null); setFormError(""); };
@@ -252,8 +218,8 @@ export default function App() {
     if (!form.nom || !form.prenom || !form.debut || !form.fin) return;
     setFormError("");
     const res = editId
-      ? await authFetch(`${API_BASE}/stagiaires/${editId}`, { method:"PUT", headers:{ "Content-Type":"application/json" }, body: JSON.stringify(form) })
-      : await authFetch(`${API_BASE}/stagiaires`, { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify(form) });
+      ? await fetch(`${API_BASE}/stagiaires/${editId}`, { method:"PUT", headers:{ "Content-Type":"application/json" }, body: JSON.stringify(form) })
+      : await fetch(`${API_BASE}/stagiaires`, { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify(form) });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
       setFormError(data.error || "Une erreur est survenue, le stagiaire n'a pas été enregistré.");
@@ -265,7 +231,7 @@ export default function App() {
   };
 
   const remove = async id => {
-    await authFetch(`${API_BASE}/stagiaires/${id}`, { method:"DELETE" });
+    await fetch(`${API_BASE}/stagiaires/${id}`, { method:"DELETE" });
     await fetchStagiaires();
     await fetchAssignments();
   };
@@ -323,15 +289,15 @@ export default function App() {
   const getDeskStatus = id => { const a = assignments[id]; if (!a) return "free"; if (a.unavailable) return "unavailable"; return "occupied"; };
   const getDeskName = id => { const a = assignments[id]; if (!a?.stagiaireId) return null; const s = stags.find(x => x.id === a.stagiaireId); return s ? `${s.prenom} ${s.nom[0]}.` : null; };
   const assignDesk = async (did, sid) => {
-    await authFetch(`${API_BASE}/assignments`, { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify({ desk_id: did, stagiaire_id: sid }) });
+    await fetch(`${API_BASE}/assignments`, { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify({ desk_id: did, stagiaire_id: sid }) });
     await fetchAssignments();
   };
   const freeDesk = async did => {
-    await authFetch(`${API_BASE}/assignments/${did}`, { method:"DELETE" });
+    await fetch(`${API_BASE}/assignments/${did}`, { method:"DELETE" });
     await fetchAssignments();
   };
   const markUnavail = async did => {
-    await authFetch(`${API_BASE}/assignments/${did}/unavailable`, { method:"PUT" });
+    await fetch(`${API_BASE}/assignments/${did}/unavailable`, { method:"PUT" });
     await fetchAssignments();
   };
   const assignedIds = useMemo(() => new Set(Object.values(assignments).filter(a => a?.stagiaireId).map(a => a.stagiaireId)), [assignments]);
@@ -348,27 +314,6 @@ export default function App() {
     { id:"plan",      label:"Plan bureaux",    icon:IC.grid },
     { id:"calendar",  label:"Calendrier",      icon:IC.cal },
   ];
-
-  if (!token) {
-    return (
-      <div style={{ display:"flex", height:"100vh", width:"100vw", alignItems:"center", justifyContent:"center", fontFamily:"'Inter',-apple-system,system-ui,sans-serif", color:T.text, background:T.pageBg, position:"fixed", top:0, left:0 }}>
-        <form onSubmit={login} style={{ background:T.surface, borderRadius:16, padding:28, width:"100%", maxWidth:340, boxShadow:"0 24px 48px rgba(0,0,0,0.18)", border:`1px solid ${T.border}` }}>
-          <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:20 }}>
-            <div style={{ width:36, height:36, borderRadius:10, background:"linear-gradient(135deg,#3b82f6,#6366f1)", display:"flex", alignItems:"center", justifyContent:"center", color:"#fff", flexShrink:0 }}>
-              <SvgIcon d={IC.lock} size={17}/>
-            </div>
-            <div style={{ fontSize:16, fontWeight:700 }}>StagiairePlan</div>
-          </div>
-          <label style={lbl(T)}>Mot de passe</label>
-          <input type="password" autoFocus value={loginPwd} onChange={e => setLoginPwd(e.target.value)} style={inp(T)} placeholder="••••••••"/>
-          {loginError && <div style={{ fontSize:12, color:"#dc2626", background:tint("#dc2626", dark, "#fef2f2"), padding:"6px 10px", borderRadius:6, marginTop:10 }}>{loginError}</div>}
-          <button type="submit" disabled={!loginPwd || loginLoading} style={{ ...btnP, width:"100%", justifyContent:"center", marginTop:16, opacity: (!loginPwd || loginLoading) ? 0.5 : 1 }}>
-            {loginLoading ? "Connexion…" : "Se connecter"}
-          </button>
-        </form>
-      </div>
-    );
-  }
 
   return (
     <div style={{ display:"flex", height:"100vh", width:"100vw", fontFamily:"'Inter',-apple-system,system-ui,sans-serif", color:T.text, background:T.pageBg, overflow:"hidden", position:"fixed", top:0, left:0 }}>
@@ -410,9 +355,6 @@ export default function App() {
           <div style={{ display:"flex", gap:8 }}>
             <button onClick={() => setDark(p => !p)} title={dark ? "Passer en thème clair" : "Passer en thème sombre"} style={iBtn(T)} aria-label="Basculer le thème">
               <SvgIcon d={dark ? IC.sun : IC.moon} size={15}/>
-            </button>
-            <button onClick={logout} title="Se déconnecter" style={iBtn(T)} aria-label="Se déconnecter">
-              <SvgIcon d={IC.logout} size={15}/>
             </button>
             <button onClick={exportXL} style={btnO(T)}><SvgIcon d={IC.dl} size={14}/><span>Export</span></button>
             <button onClick={openAdd} style={btnP}><SvgIcon d={IC.plus} size={14}/><span>Stagiaire</span></button>

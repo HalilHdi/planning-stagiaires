@@ -31,10 +31,45 @@ async function initDB() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       nom TEXT NOT NULL,
       prenom TEXT NOT NULL,
-      debut TEXT NOT NULL,
-      fin TEXT NOT NULL,
       poste TEXT NOT NULL,
       created_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
+  // Migration : les anciennes colonnes debut/fin de stagiaires deviennent une table à part (périodes multiples)
+  const stagiaireCols = db.exec("PRAGMA table_info(stagiaires)");
+  const hasLegacyDates = stagiaireCols.length > 0 && stagiaireCols[0].values.some(row => row[1] === "debut");
+  if (hasLegacyDates) {
+    db.run(`
+      CREATE TABLE IF NOT EXISTS periodes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        stagiaire_id INTEGER NOT NULL,
+        debut TEXT NOT NULL,
+        fin TEXT NOT NULL
+      )
+    `);
+    db.run("INSERT INTO periodes (stagiaire_id, debut, fin) SELECT id, debut, fin FROM stagiaires");
+    db.run(`
+      CREATE TABLE stagiaires_new (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nom TEXT NOT NULL,
+        prenom TEXT NOT NULL,
+        poste TEXT NOT NULL,
+        created_at TEXT DEFAULT (datetime('now'))
+      )
+    `);
+    db.run("INSERT INTO stagiaires_new (id, nom, prenom, poste, created_at) SELECT id, nom, prenom, poste, created_at FROM stagiaires");
+    db.run("DROP TABLE stagiaires");
+    db.run("ALTER TABLE stagiaires_new RENAME TO stagiaires");
+    console.log("✓ Migration : périodes multiples par stagiaire");
+  }
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS periodes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      stagiaire_id INTEGER NOT NULL,
+      debut TEXT NOT NULL,
+      fin TEXT NOT NULL
     )
   `);
 
@@ -98,13 +133,40 @@ function runQuery(query, params = []) {
   saveDB();
 }
 
+function getPeriodes(stagiaireId) {
+  return getAll("SELECT id, debut, fin FROM periodes WHERE stagiaire_id = ? ORDER BY debut ASC", [stagiaireId]);
+}
+
+function getStagiairesWithPeriodes() {
+  const stagiaires = getAll("SELECT * FROM stagiaires");
+  const periodes = getAll("SELECT * FROM periodes");
+  const parStagiaire = {};
+  periodes.forEach(p => { (parStagiaire[p.stagiaire_id] ??= []).push({ id: p.id, debut: p.debut, fin: p.fin }); });
+  return stagiaires
+    .map(s => {
+      const ps = (parStagiaire[s.id] || []).sort((a, b) => a.debut.localeCompare(b.debut));
+      return { ...s, periodes: ps };
+    })
+    .sort((a, b) => (a.periodes[0]?.debut || "").localeCompare(b.periodes[0]?.debut || ""));
+}
+
+function validatePeriodes(periodes) {
+  if (!Array.isArray(periodes) || periodes.length === 0) {
+    return "Au moins une période (début/fin) est requise";
+  }
+  for (const p of periodes) {
+    if (!p.debut || !p.fin) return "Chaque période doit avoir une date de début et de fin";
+    if (new Date(p.fin) < new Date(p.debut)) return "La date de fin doit être postérieure à la date de début";
+  }
+  return null;
+}
+
 // ─── ROUTES : STAGIAIRES ────────────────────────────────────────
 
 // GET tous les stagiaires
 app.get("/api/stagiaires", (req, res) => {
   try {
-    const stagiaires = getAll("SELECT * FROM stagiaires ORDER BY debut ASC");
-    res.json(stagiaires);
+    res.json(getStagiairesWithPeriodes());
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -115,7 +177,7 @@ app.get("/api/stagiaires/:id", (req, res) => {
   try {
     const stagiaire = getOne("SELECT * FROM stagiaires WHERE id = ?", [req.params.id]);
     if (!stagiaire) return res.status(404).json({ error: "Stagiaire non trouvé" });
-    res.json(stagiaire);
+    res.json({ ...stagiaire, periodes: getPeriodes(stagiaire.id) });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -124,25 +186,22 @@ app.get("/api/stagiaires/:id", (req, res) => {
 // POST créer un stagiaire
 app.post("/api/stagiaires", (req, res) => {
   try {
-    const { nom, prenom, debut, fin, poste } = req.body;
+    const { nom, prenom, poste, periodes } = req.body;
 
-    if (!nom || !prenom || !debut || !fin) {
-      return res.status(400).json({ error: "Tous les champs sont requis : nom, prenom, debut, fin" });
+    if (!nom || !prenom) {
+      return res.status(400).json({ error: "Tous les champs sont requis : nom, prenom" });
     }
+    const periodesError = validatePeriodes(periodes);
+    if (periodesError) return res.status(400).json({ error: periodesError });
 
-    if (new Date(fin) < new Date(debut)) {
-      return res.status(400).json({ error: "La date de fin doit être postérieure à la date de début" });
-    }
-
-    runQuery(
-      "INSERT INTO stagiaires (nom, prenom, debut, fin, poste) VALUES (?, ?, ?, ?, ?)",
-      [nom, prenom, debut, fin, poste || ""]
-    );
-
+    db.run("INSERT INTO stagiaires (nom, prenom, poste) VALUES (?, ?, ?)", [nom, prenom, poste || ""]);
     const id = db.exec("SELECT last_insert_rowid() as id")[0].values[0][0];
+    periodes.forEach(p => db.run("INSERT INTO periodes (stagiaire_id, debut, fin) VALUES (?, ?, ?)", [id, p.debut, p.fin]));
+    saveDB();
+
     const created = getOne("SELECT * FROM stagiaires WHERE id = ?", [id]);
 
-    res.status(201).json(created);
+    res.status(201).json({ ...created, periodes: getPeriodes(id) });
     console.log(`+ Stagiaire ajouté : ${prenom} ${nom}`);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -152,30 +211,30 @@ app.post("/api/stagiaires", (req, res) => {
 // PUT modifier un stagiaire
 app.put("/api/stagiaires/:id", (req, res) => {
   try {
-    const { nom, prenom, debut, fin, poste } = req.body;
+    const { nom, prenom, poste, periodes } = req.body;
     const { id } = req.params;
 
     const existing = getOne("SELECT * FROM stagiaires WHERE id = ?", [id]);
     if (!existing) return res.status(404).json({ error: "Stagiaire non trouvé" });
 
-    if (fin && debut && new Date(fin) < new Date(debut)) {
-      return res.status(400).json({ error: "La date de fin doit être postérieure à la date de début" });
+    if (periodes) {
+      const periodesError = validatePeriodes(periodes);
+      if (periodesError) return res.status(400).json({ error: periodesError });
     }
 
-    runQuery(
-      "UPDATE stagiaires SET nom = ?, prenom = ?, debut = ?, fin = ?, poste = ? WHERE id = ?",
-      [
-        nom || existing.nom,
-        prenom || existing.prenom,
-        debut || existing.debut,
-        fin || existing.fin,
-        poste || existing.poste,
-        id,
-      ]
+    db.run(
+      "UPDATE stagiaires SET nom = ?, prenom = ?, poste = ? WHERE id = ?",
+      [nom || existing.nom, prenom || existing.prenom, poste ?? existing.poste, id]
     );
 
+    if (periodes) {
+      db.run("DELETE FROM periodes WHERE stagiaire_id = ?", [id]);
+      periodes.forEach(p => db.run("INSERT INTO periodes (stagiaire_id, debut, fin) VALUES (?, ?, ?)", [id, p.debut, p.fin]));
+    }
+    saveDB();
+
     const updated = getOne("SELECT * FROM stagiaires WHERE id = ?", [id]);
-    res.json(updated);
+    res.json({ ...updated, periodes: getPeriodes(id) });
     console.log(`~ Stagiaire modifié : ${updated.prenom} ${updated.nom}`);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -191,6 +250,7 @@ app.delete("/api/stagiaires/:id", (req, res) => {
 
     // Libérer les bureaux assignés à ce stagiaire
     runQuery("DELETE FROM assignments WHERE stagiaire_id = ?", [id]);
+    runQuery("DELETE FROM periodes WHERE stagiaire_id = ?", [id]);
     runQuery("DELETE FROM stagiaires WHERE id = ?", [id]);
 
     res.json({ message: "Stagiaire supprimé", id: Number(id) });
@@ -207,7 +267,7 @@ app.get("/api/assignments", (req, res) => {
   try {
     const assignments = getAll(`
       SELECT a.desk_id, a.stagiaire_id, a.unavailable, a.updated_at,
-             s.nom, s.prenom, s.poste, s.debut, s.fin
+             s.nom, s.prenom, s.poste
       FROM assignments a
       LEFT JOIN stagiaires s ON a.stagiaire_id = s.id
     `);
@@ -246,7 +306,7 @@ app.post("/api/assignments", (req, res) => {
     }
 
     const result = getOne(`
-      SELECT a.*, s.nom, s.prenom, s.poste, s.debut, s.fin
+      SELECT a.*, s.nom, s.prenom, s.poste
       FROM assignments a
       LEFT JOIN stagiaires s ON a.stagiaire_id = s.id
       WHERE a.desk_id = ?

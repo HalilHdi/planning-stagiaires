@@ -27,7 +27,25 @@ const SMETA = {
 };
 function fmtDate(d) { return d ? parseLocal(d).toLocaleDateString("fr-FR",{day:"2-digit",month:"short",year:"numeric"}) : ""; }
 function daysLeft(e) { const n=new Date();n.setHours(0,0,0,0);return Math.ceil((parseLocal(e)-n)/864e5); }
-function dur(s,e) { const d=Math.ceil((parseLocal(e)-parseLocal(s))/864e5); return d<7?`${d}j`:d<30?`${Math.round(d/7)} sem.`:`${Math.round(d/30)} mois`; }
+function durFromDays(d) { return d<7?`${d}j`:d<30?`${Math.round(d/7)} sem.`:`${Math.round(d/30)} mois`; }
+function dur(s,e) { return durFromDays(Math.ceil((parseLocal(e)-parseLocal(s))/864e5)); }
+
+// ─── Aide multi-périodes ──────────────────────────────────────────
+function getOverallStatus(periodes) {
+  const statuses = (periodes || []).map(p => getStatus(p.debut, p.fin));
+  if (statuses.includes("active")) return "active";
+  if (statuses.includes("upcoming")) return "upcoming";
+  return "completed";
+}
+function getActivePeriod(periodes) {
+  return (periodes || []).find(p => getStatus(p.debut, p.fin) === "active") || null;
+}
+function totalDurationDays(periodes) {
+  return (periodes || []).reduce((sum, p) => sum + Math.ceil((parseLocal(p.fin) - parseLocal(p.debut)) / 864e5), 0);
+}
+function fmtPeriodes(periodes) {
+  return (periodes || []).map(p => `${fmtDate(p.debut)} → ${fmtDate(p.fin)}`).join(", ");
+}
 
 const GRANDE = [
   { id:"g5", x:162, y:60,  o:"h", cp:"top",    label:"G5" },
@@ -284,7 +302,7 @@ export default function App() {
   const [view, setView] = useState(() => sessionStorage.getItem("view") || "dashboard");
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState(null);
-  const [form, setForm] = useState({ nom:"", prenom:"", debut:"", fin:"", poste:"" });
+  const [form, setForm] = useState({ nom:"", prenom:"", poste:"", periodes:[{ debut:"", fin:"" }] });
   const [formError, setFormError] = useState("");
   const [filter, setFilter] = useState("all");
   const [search, setSearch] = useState("");
@@ -345,12 +363,19 @@ export default function App() {
   useEffect(() => { fetchStagiaires(); fetchAssignments(); fetchDeskLayout(); fetchPhoneLayout(); }, [fetchStagiaires, fetchAssignments, fetchDeskLayout, fetchPhoneLayout]);
   useEffect(() => { sessionStorage.setItem("view", view); }, [view]);
 
-  const resetForm = () => { setForm({ nom:"", prenom:"", debut:"", fin:"", poste:"" }); setEditId(null); setFormError(""); };
+  const resetForm = () => { setForm({ nom:"", prenom:"", poste:"", periodes:[{ debut:"", fin:"" }] }); setEditId(null); setFormError(""); };
   const openAdd = () => { resetForm(); setShowForm(true); };
-  const openEdit = s => { setForm({ nom:s.nom, prenom:s.prenom, debut:s.debut, fin:s.fin, poste:s.poste }); setEditId(s.id); setFormError(""); setShowForm(true); };
+  const openEdit = s => { setForm({ nom:s.nom, prenom:s.prenom, poste:s.poste, periodes: s.periodes.map(p => ({ debut:p.debut, fin:p.fin })) }); setEditId(s.id); setFormError(""); setShowForm(true); };
+
+  const isFormValid = () => form.nom && form.prenom && form.periodes.length > 0
+    && form.periodes.every(p => p.debut && p.fin && new Date(p.fin) >= new Date(p.debut));
+
+  const updatePeriode = (i, field, value) => setForm(f => ({ ...f, periodes: f.periodes.map((p, idx) => idx === i ? { ...p, [field]: value } : p) }));
+  const addPeriode = () => setForm(f => ({ ...f, periodes: [...f.periodes, { debut:"", fin:"" }] }));
+  const removePeriode = i => setForm(f => ({ ...f, periodes: f.periodes.filter((_, idx) => idx !== i) }));
 
   const save = async () => {
-    if (!form.nom || !form.prenom || !form.debut || !form.fin) return;
+    if (!isFormValid()) return;
     setFormError("");
     const res = editId
       ? await fetch(`${API_BASE}/stagiaires/${editId}`, { method:"PUT", headers:{ "Content-Type":"application/json" }, body: JSON.stringify(form) })
@@ -373,24 +398,24 @@ export default function App() {
 
   const counts = useMemo(() => {
     const c = { all: stags.length, active: 0, upcoming: 0, completed: 0 };
-    stags.forEach(s => c[getStatus(s.debut, s.fin)]++);
+    stags.forEach(s => c[getOverallStatus(s.periodes)]++);
     return c;
   }, [stags]);
 
   const filtered = useMemo(() => {
     let l = stags;
-    if (filter !== "all") l = l.filter(s => getStatus(s.debut, s.fin) === filter);
+    if (filter !== "all") l = l.filter(s => getOverallStatus(s.periodes) === filter);
     if (search) { const q = search.toLowerCase(); l = l.filter(s => `${s.nom} ${s.prenom} ${s.poste}`.toLowerCase().includes(q)); }
-    return l.sort((a, b) => parseLocal(a.debut) - parseLocal(b.debut));
+    return l.sort((a, b) => parseLocal(a.periodes[0]?.debut) - parseLocal(b.periodes[0]?.debut));
   }, [stags, filter, search]);
 
   const exportXL = () => {
     const d = stags.map(s => ({
-      "Nom": s.nom, "Prénom": s.prenom, "Début": fmtDate(s.debut), "Fin": fmtDate(s.fin),
-      "Formation / Rythme": s.poste, "Statut": SMETA[getStatus(s.debut, s.fin)].label, "Durée": dur(s.debut, s.fin),
+      "Nom": s.nom, "Prénom": s.prenom, "Période(s)": fmtPeriodes(s.periodes),
+      "Formation / Rythme": s.poste, "Statut": SMETA[getOverallStatus(s.periodes)].label, "Durée": durFromDays(totalDurationDays(s.periodes)),
     }));
     const ws = XLSX.utils.json_to_sheet(d);
-    ws["!cols"] = [{ wch:15 },{ wch:15 },{ wch:16 },{ wch:16 },{ wch:24 },{ wch:12 },{ wch:10 }];
+    ws["!cols"] = [{ wch:15 },{ wch:15 },{ wch:40 },{ wch:24 },{ wch:12 },{ wch:10 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Stagiaires");
     XLSX.writeFile(wb, `planning_${new Date().toISOString().slice(0, 10)}.xlsx`);
@@ -401,24 +426,27 @@ export default function App() {
   const navY = dir => setCalMonth(p => ({ ...p, y: p.y + dir }));
 
   const yearStags = useMemo(() => stags.filter(s => {
-    const sd = parseLocal(s.debut), ed = parseLocal(s.fin);
     const ys = new Date(calMonth.y, 0, 1), ye = new Date(calMonth.y, 11, 31);
-    return sd <= ye && ed >= ys;
-  }).sort((a, b) => parseLocal(a.debut) - parseLocal(b.debut)), [stags, calMonth.y]);
+    return s.periodes.some(p => parseLocal(p.debut) <= ye && parseLocal(p.fin) >= ys);
+  }).sort((a, b) => parseLocal(a.periodes[0]?.debut) - parseLocal(b.periodes[0]?.debut)), [stags, calMonth.y]);
 
   const monthOverlap = useCallback((s, m) => {
     const ms = new Date(calMonth.y, m, 1), me = new Date(calMonth.y, m + 1, 0);
-    const sd = parseLocal(s.debut), ed = parseLocal(s.fin);
-    if (sd > me || ed < ms) return null;
-    const startsHere = sd >= ms && sd <= me;
-    const endsHere = ed >= ms && ed <= me;
     const dInMonth = me.getDate();
-    const left = startsHere ? (sd.getDate() - 1) / dInMonth * 100 : 0;
-    const right = endsHere ? ed.getDate() / dInMonth * 100 : 100;
-    return { startsHere, endsHere, left, width: right - left };
+    return s.periodes
+      .map(p => {
+        const sd = parseLocal(p.debut), ed = parseLocal(p.fin);
+        if (sd > me || ed < ms) return null;
+        const startsHere = sd >= ms && sd <= me;
+        const endsHere = ed >= ms && ed <= me;
+        const left = startsHere ? (sd.getDate() - 1) / dInMonth * 100 : 0;
+        const right = endsHere ? ed.getDate() / dInMonth * 100 : 100;
+        return { startsHere, endsHere, left, width: right - left, sd, ed };
+      })
+      .filter(Boolean);
   }, [calMonth.y]);
 
-  const monthCounts = useMemo(() => MONTHS_SHORT.map((_, m) => yearStags.filter(s => monthOverlap(s, m)).length), [yearStags, monthOverlap]);
+  const monthCounts = useMemo(() => MONTHS_SHORT.map((_, m) => yearStags.filter(s => monthOverlap(s, m).length > 0).length), [yearStags, monthOverlap]);
 
   // Desk logic
   const getDeskStatus = id => { const a = assignments[id]; if (!a) return "free"; if (a.unavailable) return "unavailable"; return "occupied"; };
@@ -436,7 +464,7 @@ export default function App() {
     await fetchAssignments();
   };
   const assignedIds = useMemo(() => new Set(Object.values(assignments).filter(a => a?.stagiaireId).map(a => a.stagiaireId)), [assignments]);
-  const availStags = useMemo(() => stags.filter(s => !assignedIds.has(s.id) && getStatus(s.debut, s.fin) === "active"), [stags, assignedIds]);
+  const availStags = useMemo(() => stags.filter(s => !assignedIds.has(s.id) && getOverallStatus(s.periodes) === "active"), [stags, assignedIds]);
 
   const applyOverride = useCallback(d => {
     const o = layoutOverrides[d.id];
@@ -568,13 +596,15 @@ export default function App() {
                 </div>
                 <div style={{ background:T.surface, borderRadius:14, border:`1px solid ${T.border}`, padding:20 }}>
                   <div style={{ fontSize:14, fontWeight:700, marginBottom:14 }}>Stagiaires en cours</div>
-                  {stags.filter(s => getStatus(s.debut, s.fin) === "active").map((s, i) => (
+                  {stags.filter(s => getOverallStatus(s.periodes) === "active").map((s, i) => {
+                    const ap = getActivePeriod(s.periodes);
+                    return (
                     <div key={s.id} style={{ display:"flex", alignItems:"center", gap:12, padding:"8px 0", borderBottom:`1px solid ${T.borderLight}` }}>
                       <div style={{ width:32, height:32, borderRadius:"50%", background:ACCENT[i%ACCENT.length], color:"#fff", display:"flex", alignItems:"center", justifyContent:"center", fontWeight:700, fontSize:12, flexShrink:0 }}>{s.prenom[0]}{s.nom[0]}</div>
                       <div style={{ flex:1 }}><div style={{ fontWeight:600, fontSize:13 }}>{s.prenom} {s.nom}</div><div style={{ fontSize:11, color:T.textMuted }}>{s.poste}</div></div>
-                      <div style={{ fontSize:11, color: daysLeft(s.fin) <= 7 ? "#dc2626" : T.textMuted }}>{daysLeft(s.fin) > 0 ? `${daysLeft(s.fin)}j restants` : "Dernier jour"}</div>
+                      <div style={{ fontSize:11, color: daysLeft(ap.fin) <= 7 ? "#dc2626" : T.textMuted }}>{daysLeft(ap.fin) > 0 ? `${daysLeft(ap.fin)}j restants` : "Dernier jour"}</div>
                     </div>
-                  ))}
+                  ); })}
                   {counts.active === 0 && <div style={{ color:T.textFaint, fontSize:13 }}>Aucun stagiaire en cours</div>}
                 </div>
               </div>
@@ -599,7 +629,7 @@ export default function App() {
                 {isMobile ? (
                   <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
                     {filtered.length === 0 && <div style={{ padding:40, textAlign:"center", color:T.textFaint, fontSize:13, background:T.surface, borderRadius:14, border:`1px solid ${T.border}` }}>Aucun stagiaire</div>}
-                    {filtered.map((s, i) => { const st = getStatus(s.debut, s.fin); const m = chipColor(SMETA[st], dark); return (
+                    {filtered.map((s, i) => { const st = getOverallStatus(s.periodes); const m = chipColor(SMETA[st], dark); const ap = getActivePeriod(s.periodes); return (
                       <div key={s.id} style={{ background:T.surface, borderRadius:14, border:`1px solid ${T.border}`, padding:14 }}>
                         <div style={{ display:"flex", alignItems:"center", gap:10 }}>
                           <div style={{ width:36, height:36, borderRadius:"50%", background:ACCENT[i%ACCENT.length], color:"#fff", display:"flex", alignItems:"center", justifyContent:"center", fontWeight:700, fontSize:13, flexShrink:0 }}>{s.prenom[0]}{s.nom[0]}</div>
@@ -613,8 +643,8 @@ export default function App() {
                         </div>
                         <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginTop:10, paddingTop:10, borderTop:`1px solid ${T.borderLight}` }}>
                           <div style={{ fontSize:12, color:T.textMuted }}>
-                            {fmtDate(s.debut)} → {fmtDate(s.fin)} · {dur(s.debut, s.fin)}
-                            {st === "active" && <div style={{ color: daysLeft(s.fin) <= 7 ? "#dc2626" : T.textMuted, marginTop:2 }}>{daysLeft(s.fin) > 0 ? `${daysLeft(s.fin)}j restants` : "Dernier jour"}</div>}
+                            {fmtPeriodes(s.periodes)} · {durFromDays(totalDurationDays(s.periodes))}
+                            {ap && <div style={{ color: daysLeft(ap.fin) <= 7 ? "#dc2626" : T.textMuted, marginTop:2 }}>{daysLeft(ap.fin) > 0 ? `${daysLeft(ap.fin)}j restants` : "Dernier jour"}</div>}
                           </div>
                           <div style={{ display:"flex", gap:4 }}>
                             <button onClick={() => openEdit(s)} style={iBtn(T)}><SvgIcon d={IC.edit} size={13}/></button>
@@ -630,15 +660,15 @@ export default function App() {
                     <span>Stagiaire</span><span>Formation / Rythme</span><span>Période</span><span>Durée</span><span>Statut</span><span></span>
                   </div>
                   {filtered.length === 0 && <div style={{ padding:40, textAlign:"center", color:T.textFaint, fontSize:13 }}>Aucun stagiaire</div>}
-                  {filtered.map((s, i) => { const st = getStatus(s.debut, s.fin); const m = chipColor(SMETA[st], dark); return (
+                  {filtered.map((s, i) => { const st = getOverallStatus(s.periodes); const m = chipColor(SMETA[st], dark); const ap = getActivePeriod(s.periodes); return (
                     <div key={s.id} style={{ display:"grid", gridTemplateColumns:"2fr 1.6fr 1fr 0.8fr 0.8fr 70px", gap:8, padding:"11px 16px", borderBottom:`1px solid ${T.borderLight}`, alignItems:"center", fontSize:13 }}>
                       <div style={{ display:"flex", alignItems:"center", gap:10 }}>
                         <div style={{ width:32, height:32, borderRadius:"50%", background:ACCENT[i%ACCENT.length], color:"#fff", display:"flex", alignItems:"center", justifyContent:"center", fontWeight:700, fontSize:12, flexShrink:0 }}>{s.prenom[0]}{s.nom[0]}</div>
-                        <div><div style={{ fontWeight:600 }}>{s.prenom} {s.nom}</div>{st === "active" && <div style={{ fontSize:11, color: daysLeft(s.fin) <= 7 ? "#dc2626" : T.textMuted }}>{daysLeft(s.fin) > 0 ? `${daysLeft(s.fin)}j restants` : "Dernier jour"}</div>}</div>
+                        <div><div style={{ fontWeight:600 }}>{s.prenom} {s.nom}</div>{ap && <div style={{ fontSize:11, color: daysLeft(ap.fin) <= 7 ? "#dc2626" : T.textMuted }}>{daysLeft(ap.fin) > 0 ? `${daysLeft(ap.fin)}j restants` : "Dernier jour"}</div>}</div>
                       </div>
                       <span style={{ color:T.text }}>{s.poste}</span>
-                      <span style={{ color:T.textMuted, fontSize:12 }}>{fmtDate(s.debut)} → {fmtDate(s.fin)}</span>
-                      <span style={{ color:T.textMuted, fontSize:12 }}>{dur(s.debut, s.fin)}</span>
+                      <span style={{ color:T.textMuted, fontSize:12, lineHeight:1.5 }}>{s.periodes.map((p, pi) => <div key={pi}>{fmtDate(p.debut)} → {fmtDate(p.fin)}</div>)}</span>
+                      <span style={{ color:T.textMuted, fontSize:12 }}>{durFromDays(totalDurationDays(s.periodes))}</span>
                       <span style={{ display:"inline-flex", alignItems:"center", gap:4, padding:"3px 8px", borderRadius:6, background:m.bg, color:m.fg, fontSize:11, fontWeight:600, width:"fit-content" }}>
                         <span style={{ width:6, height:6, borderRadius:"50%", background:m.dot }}/>{SMETA[st].label}
                       </span>
@@ -771,7 +801,7 @@ export default function App() {
                     {yearStags.length === 0 && <div style={{ padding:30, textAlign:"center", color:T.textFaint, fontSize:13 }}>Aucun stagiaire sur {calMonth.y}</div>}
                     {yearStags.map(s => {
                       const idx = stags.findIndex(x => x.id === s.id); const color = ACCENT[idx%ACCENT.length];
-                      const st = getStatus(s.debut, s.fin); const m = chipColor(SMETA[st], dark);
+                      const st = getOverallStatus(s.periodes); const m = chipColor(SMETA[st], dark);
                       return (
                         <div key={s.id} style={{ display:"grid", gridTemplateColumns:"90px 110px 110px 150px repeat(12,1fr)", borderBottom:`1px solid ${T.borderLight}`, alignItems:"center", minHeight:34 }}>
                           <div style={{ padding:"0 10px" }}>
@@ -783,12 +813,11 @@ export default function App() {
                           <div style={{ padding:"0 10px", fontSize:12, fontWeight:600, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{s.nom}</div>
                           <div style={{ padding:"0 10px", fontSize:12, color:T.textMuted, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{s.poste}</div>
                           {MONTHS_SHORT.map((_, mi) => {
-                            const o = monthOverlap(s, mi);
-                            const sd = parseLocal(s.debut), ed = parseLocal(s.fin);
+                            const segments = monthOverlap(s, mi);
                             return (
                               <div key={mi} style={{ position:"relative", height:22, borderLeft:`1px solid ${T.borderLight}` }}>
-                                {o && (
-                                  <div style={{
+                                {segments.map((o, si) => (
+                                  <div key={si} style={{
                                     position:"absolute", left:`${o.left}%`, width:`${o.width}%`, top:0, bottom:0,
                                     background:`${color}22`,
                                     borderRadius: o.startsHere && o.endsHere ? 3 : o.startsHere ? "3px 0 0 3px" : o.endsHere ? "0 3px 3px 0" : 0,
@@ -806,14 +835,14 @@ export default function App() {
                                           : { right:4, transform:"translateY(-50%)" }),
                                       }}>
                                         {o.startsHere && o.endsHere
-                                          ? `${String(sd.getDate()).padStart(2,"0")}–${String(ed.getDate()).padStart(2,"0")}`
+                                          ? `${String(o.sd.getDate()).padStart(2,"0")}–${String(o.ed.getDate()).padStart(2,"0")}`
                                           : o.startsHere
-                                          ? `${String(sd.getDate()).padStart(2,"0")}.${String(sd.getMonth()+1).padStart(2,"0")}`
-                                          : `${String(ed.getDate()).padStart(2,"0")}.${String(ed.getMonth()+1).padStart(2,"0")}`}
+                                          ? `${String(o.sd.getDate()).padStart(2,"0")}.${String(o.sd.getMonth()+1).padStart(2,"0")}`
+                                          : `${String(o.ed.getDate()).padStart(2,"0")}.${String(o.ed.getMonth()+1).padStart(2,"0")}`}
                                       </span>
                                     )}
                                   </div>
-                                )}
+                                ))}
                               </div>
                             );
                           })}
@@ -927,7 +956,7 @@ export default function App() {
                       <div style={{ fontSize:12, fontWeight:600, color:T.textMuted, marginBottom:6 }}>Affecté à</div>
                       <div style={{ display:"flex", alignItems:"center", gap:10, padding:10, background:T.floorBg, borderRadius:10, border:`1px solid ${T.border}` }}>
                         <div style={{ width:36, height:36, borderRadius:"50%", background:"#3b82f6", color:"#fff", display:"flex", alignItems:"center", justifyContent:"center", fontWeight:700, fontSize:13 }}>{assignee.prenom[0]}{assignee.nom[0]}</div>
-                        <div><div style={{ fontWeight:600, fontSize:13 }}>{assignee.prenom} {assignee.nom}</div><div style={{ fontSize:11, color:T.textMuted }}>{fmtDate(assignee.debut)} → {fmtDate(assignee.fin)}</div></div>
+                        <div><div style={{ fontWeight:600, fontSize:13 }}>{assignee.prenom} {assignee.nom}</div><div style={{ fontSize:11, color:T.textMuted }}>{fmtPeriodes(assignee.periodes)}</div></div>
                       </div>
                       <button onClick={() => freeDesk(selDesk)} style={{ ...btnO(T), width:"100%", justifyContent:"center", marginTop:10, color:"#ef4444", borderColor:"#fecaca" }}>
                         <SvgIcon d={IC.trash} size={13}/><span>Libérer le poste</span>
@@ -982,13 +1011,30 @@ export default function App() {
                 <div><label style={lbl(T)}>Nom</label><input value={form.nom} onChange={e => setForm(f => ({ ...f, nom: e.target.value }))} style={inp(T)} placeholder="Ex: Curie"/></div>
               </div>
               <div><label style={lbl(T)}>Formation / Rythme</label><input value={form.poste} onChange={e => setForm(f => ({ ...f, poste: e.target.value }))} style={inp(T)} placeholder="Ex: EFB -14h/18h"/></div>
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
-                <div><label style={lbl(T)}>Date de début</label><input type="date" value={form.debut} onChange={e => setForm(f => ({ ...f, debut: e.target.value }))} style={inp(T)}/></div>
-                <div><label style={lbl(T)}>Date de fin</label><input type="date" value={form.fin} onChange={e => setForm(f => ({ ...f, fin: e.target.value }))} style={inp(T)}/></div>
+              <div>
+                <label style={lbl(T)}>Période(s)</label>
+                <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                  {form.periodes.map((p, i) => {
+                    const rowInvalid = p.debut && p.fin && new Date(p.fin) < new Date(p.debut);
+                    return (
+                      <div key={i}>
+                        <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+                          <input type="date" value={p.debut} onChange={e => updatePeriode(i, "debut", e.target.value)} style={inp(T)}/>
+                          <span style={{ color:T.textFaint, fontSize:13, flexShrink:0 }}>→</span>
+                          <input type="date" value={p.fin} onChange={e => updatePeriode(i, "fin", e.target.value)} style={inp(T)}/>
+                          {form.periodes.length > 1 && (
+                            <button onClick={() => removePeriode(i)} style={{ ...iBtn(T), color:"#ef4444", flexShrink:0 }}><SvgIcon d={IC.trash} size={13}/></button>
+                          )}
+                        </div>
+                        {rowInvalid && (
+                          <div style={{ fontSize:11, color:"#dc2626", marginTop:4 }}>La date de fin doit être postérieure à la date de début.</div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                <button onClick={addPeriode} style={{ ...btnO(T), marginTop:8 }}><SvgIcon d={IC.plus} size={13}/><span>Ajouter une période</span></button>
               </div>
-              {form.debut && form.fin && new Date(form.fin) < new Date(form.debut) && (
-                <div style={{ fontSize:12, color:"#dc2626", background:tint("#dc2626", dark, "#fef2f2"), padding:"6px 10px", borderRadius:6 }}>La date de fin doit être postérieure à la date de début.</div>
-              )}
               {formError && (
                 <div style={{ fontSize:12, color:"#dc2626", background:tint("#dc2626", dark, "#fef2f2"), padding:"6px 10px", borderRadius:6 }}>{formError}</div>
               )}
@@ -996,8 +1042,8 @@ export default function App() {
             <div style={{ display:"flex", gap:10, marginTop:20, justifyContent:"flex-end" }}>
               <button onClick={() => { setShowForm(false); resetForm(); }} style={btnO(T)}>Annuler</button>
               <button onClick={save}
-                disabled={!form.nom || !form.prenom || !form.debut || !form.fin || new Date(form.fin) < new Date(form.debut)}
-                style={{ ...btnP, opacity: (!form.nom || !form.prenom || !form.debut || !form.fin || new Date(form.fin) < new Date(form.debut)) ? 0.5 : 1 }}>
+                disabled={!isFormValid()}
+                style={{ ...btnP, opacity: !isFormValid() ? 0.5 : 1 }}>
                 {editId ? "Enregistrer" : "Ajouter"}
               </button>
             </div>
